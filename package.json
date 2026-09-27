@@ -1,0 +1,25 @@
+{
+  "name": "avrt-config",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
+  "scripts": {
+    "predev": "pnpm generate-manifest",
+    "dev": "vite --host 127.0.0.1",
+    "prebuild": "pnpm generate-manifest",
+    "build": "vite build",
+    "generate-icons": "node scripts/generate-icons.mjs",
+    "generate-manifest": "node scripts/generate-manifest.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.9",
+    "vite": "^5.4.20",
+    "vitest": "^2.1.9"
+  }
+}

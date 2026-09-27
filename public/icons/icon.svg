@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">AVRT Config</title>
+  <desc id="desc">An open circular track that fades toward its end, surrounding three radio signal bars.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#243e68"/><stop offset="1" stop-color="#101e35"/>
+    </linearGradient>
+    <linearGradient id="trackFade" x1="122.36" y1="230.75" x2="253.86" y2="120.02" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f3f7ff" stop-opacity="1"/><stop offset="1" stop-color="#f3f7ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="trackFadeEnd" x1="344" y1="152" x2="389.55" y2="230.28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f3f7ff" stop-opacity="0"/><stop offset="1" stop-color="#f3f7ff" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#background)"/>
+  <path d="M389.55 230.28 Q391.06 238.12 391.64 246.09 Q392.22 254.05 391.87 262.03 Q391.51 270.00 390.23 277.88 Q388.94 285.76 386.74 293.44 Q384.55 301.12 381.47 308.48 Q378.38 315.85 374.46 322.80 Q370.54 329.76 365.83 336.21 Q361.12 342.66 355.69 348.51 Q350.26 354.36 344.18 359.54 Q338.10 364.72 331.46 369.15 Q324.82 373.58 317.70 377.20 Q310.58 380.82 303.09 383.59 Q295.60 386.35 287.84 388.22 Q280.08 390.09 272.15 391.04 Q264.22 391.99 256.24 392.00 Q248.25 392.01 240.32 391.09 Q232.39 390.17 224.62 388.33 Q216.85 386.49 209.35 383.75 Q201.85 381.01 194.72 377.41 Q187.60 373.82 180.94 369.41 Q174.28 365.00 168.18 359.85 Q162.08 354.69 156.63 348.86 Q151.18 343.02 146.45 336.59 Q141.72 330.16 137.77 323.22 Q133.83 316.28 130.72 308.92 Q127.61 301.57 125.39 293.90 Q123.16 286.23 121.85 278.35 Q120.54 270.48 120.16 262.50 Q119.77 254.53 120.33 246.56 Q120.88 238.60 122.36 230.75" fill="none" stroke="#f3f7ff" stroke-width="28" stroke-linecap="round"/>
+  <path d="M121.79 234.02 Q123.06 226.22 125.24 218.63 Q127.41 211.03 130.44 203.74 Q133.48 196.44 137.34 189.55 Q141.20 182.65 145.83 176.25 Q150.47 169.85 155.81 164.03 Q161.15 158.21 167.13 153.05 Q173.12 147.89 179.65 143.45 Q186.19 139.02 193.20 135.37 Q200.21 131.72 207.59 128.91 Q214.98 126.09 222.64 124.16 Q230.30 122.22 238.13 121.18 Q245.96 120.14 253.86 120.02" fill="none" stroke="url(#trackFade)" stroke-width="28" stroke-linecap="butt"/>
+  <path d="M344 152 A136 136 0 0 1 389.55 230.28" fill="none" stroke="url(#trackFadeEnd)" stroke-width="28" stroke-linecap="butt"/>
+  <rect x="187" y="258" width="34" height="62" rx="17" fill="#f3f7ff"/>
+  <rect x="239" y="226" width="34" height="94" rx="17" fill="#f3f7ff"/>
+  <rect x="291" y="194" width="34" height="126" rx="17" fill="#65e6b0"/>
+</svg>

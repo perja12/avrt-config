@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#16243b">
+    <meta name="description" content="__AP510_APP_DESCRIPTION__">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <title>__AP510_APP_NAME__</title>
+    <link rel="stylesheet" href="./src/styles.css">
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span data-app-name>__AP510_APP_NAME__</span>
+        </div>
+
+        <nav class="workspace-tabs" aria-label="Workspaces">
+          <button class="workspace-tab active" data-workspace="configure" aria-selected="true">Configure</button>
+          <button class="workspace-tab" data-workspace="program" aria-selected="false">Templates</button>
+        </nav>
+
+        <div class="topbar-spacer"></div>
+
+        <div class="connection">
+          <span id="connection-dot" class="dot" data-connected="false"></span>
+          <span id="connection-text">No tracker connected</span>
+        </div>
+
+        <button id="install-app" class="install-button" type="button" hidden>Install</button>
+        <button class="icon-button" data-workspace="help" title="Help" aria-label="Help">?</button>
+      </header>
+
+      <div class="workspace" data-workspace-panel="configure">
+        <aside class="sidebar">
+          <div class="sidebar-mark" aria-hidden="true">
+            <img src="./icons/icon.svg" alt="">
+          </div>
+          <nav id="category-nav" class="side-nav" aria-label="Configuration categories"></nav>
+          <small class="sidebar-version" data-app-version></small>
+        </aside>
+
+        <main class="main-panel">
+          <div id="app-update" class="app-update" hidden role="status" aria-live="polite">
+            <span>A newer version of <span data-app-name>__AP510_APP_NAME__</span> is ready.</span>
+            <button id="app-update-reload" class="primary" type="button">Reload</button>
+          </div>
+          <div class="page-head">
+            <h1 id="category-title">APRS</h1>
+            <p id="category-subtitle" class="subtle"></p>
+          </div>
+
+          <div id="browser-support-warning" class="browser-support-warning" role="alert" hidden>
+            Web Serial is not available in this browser, or it is disabled. Please use a current browser with Web Serial enabled, such as Firefox, Chrome, Edge, or Vivaldi, to connect to an AP510 tracker.
+          </div>
+
+          <div class="configure-grid">
+            <div id="category-content" class="config-groups"></div>
+
+            <div class="stack">
+              <section class="panel workflow-panel">
+                <div id="tracker-identity" class="tracker-identity" hidden aria-live="polite"></div>
+                <section id="workflow-card" class="workflow-card" data-tone="idle" aria-live="polite">
+                  <div class="workflow-card-head">
+                    <span id="workflow-step" class="workflow-step">Step 1</span>
+                    <div class="workflow-copy">
+                      <h2 id="workflow-title">Connect to the AP510</h2>
+                      <p id="workflow-message">Use Connect to choose the serial port in the browser.</p>
+                    </div>
+                  </div>
+                  <div id="workflow-progress" class="workflow-progress" hidden>
+                    <span
+                      id="workflow-progress-bar"
+                      class="workflow-progress-bar"
+                      role="progressbar"
+                      aria-label="Setup probe progress"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                      aria-valuenow="0"
+                    ></span>
+                  </div>
+                </section>
+                <div class="workflow-actions">
+                  <button id="read">Read</button>
+                  <button id="write" class="primary" disabled>Write</button>
+                  <button id="discard" disabled>Discard</button>
+                  <button id="save-template" disabled>Save as template…</button>
+                </div>
+                <section id="change-summary" class="change-summary" hidden>
+                  <h3>Pending changes</h3>
+                  <table class="change-list">
+                    <thead>
+                      <tr><th scope="col">Field</th><th scope="col">Current</th><th scope="col">New</th></tr>
+                    </thead>
+                    <tbody id="change-list"></tbody>
+                  </table>
+                </section>
+              </section>
+
+              <details class="panel">
+                <summary>Diagnostics</summary>
+                <pre id="debug"></pre>
+              </details>
+
+              <details class="panel">
+                <summary>Activity</summary>
+                <pre id="log" aria-live="polite"></pre>
+              </details>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <div class="workspace" data-workspace-panel="program" hidden>
+        <aside class="sidebar">
+          <div class="sidebar-mark" aria-hidden="true">
+            <img src="./icons/icon.svg" alt="">
+          </div>
+          <nav class="side-nav" aria-label="Template workspace">
+            <button id="template-program-view" class="side-nav-item active" type="button">Program</button>
+            <button id="template-manage-view" class="side-nav-item" type="button">Manage templates</button>
+          </nav>
+          <small class="sidebar-version" data-app-version></small>
+        </aside>
+
+        <main class="main-panel">
+          <section class="page-head">
+            <h1>Templates</h1>
+            <p class="subtle">Read a tracker, apply a template, and write the result. Settings marked “Keep from tracker” remain unchanged.</p>
+          </section>
+          <div id="template-workspace-grid" class="template-workspace-grid">
+            <section id="template-content" class="panel template-panel">
+            <div id="template-program-content">
+              <h2>Template</h2>
+              <label class="field"><span class="field-label">Select template</span><select id="template-select"><option value="">Choose a template</option></select></label>
+              <p id="template-description" class="subtle">Create a template from Configure after reading a tracker.</p>
+              <div id="template-summary" class="template-summary"></div>
+              <div id="template-settings-content">
+                <div class="empty-state"><h3>No template selected</h3><p>Choose a template above to review its settings.</p></div>
+              </div>
+            </div>
+            <section id="template-manage-content" hidden>
+              <h2>Manage templates</h2>
+              <p class="subtle">Import, export, or remove templates stored in this browser.</p>
+              <label class="field"><span class="field-label">Template</span><select id="template-manage-select"><option value="">Choose a template</option></select></label>
+              <div id="template-manage-list" class="template-summary"></div>
+              <div id="template-manage-editor" hidden>
+                <label class="field"><span class="field-label">Name</span><input id="template-manage-name" maxlength="80"></label>
+                <label class="field"><span class="field-label">Description</span><input id="template-manage-description" maxlength="200"></label>
+                <div id="template-manage-keep-fields"></div>
+              </div>
+            </section>
+            </section>
+            <div id="template-workflow-column" class="stack">
+            <section id="template-workflow-panel" class="panel workflow-panel">
+              <div id="template-tracker-identity" class="tracker-identity" hidden aria-live="polite"></div>
+              <section id="template-workflow-card" class="workflow-card" data-tone="idle" aria-live="polite">
+                <div class="workflow-card-head"><span id="template-workflow-step" class="workflow-step">Step 1</span><div class="workflow-copy"><h2 id="template-workflow-title">Choose a template</h2><p id="template-workflow-message">Select a template, then read the connected tracker.</p></div></div>
+                <div id="template-workflow-progress" class="workflow-progress" hidden><span id="template-workflow-progress-bar" class="workflow-progress-bar" role="progressbar" aria-label="Setup probe progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></span></div>
+              </section>
+              <div class="workflow-actions">
+                <button id="template-read">Read</button>
+                <button id="template-write" class="primary" disabled>Apply template</button>
+              </div>
+              <p id="template-status" class="subtle" aria-live="polite"></p>
+            </section>
+            <section id="template-devices-panel" class="panel">
+              <h2>Devices written</h2>
+              <p id="template-devices-empty" class="subtle">No trackers written with this template yet.</p>
+              <ul id="template-devices" class="template-devices"></ul>
+            </section>
+            <section id="template-manage-actions" class="panel" hidden>
+              <h2>Template actions</h2>
+              <div class="template-management-actions">
+                <button id="template-manage-save" class="primary">Save changes</button>
+                <button id="template-export">Export</button>
+                <button id="template-import">Import</button>
+                <button id="template-delete" disabled>Delete template</button>
+                <input id="template-import-file" type="file" accept="application/json" hidden>
+              </div>
+            </section>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <main class="main-panel" data-workspace-panel="help" hidden>
+        <section class="placeholder help-page">
+          <h1>Help</h1>
+          <div class="help-layout">
+            <nav class="help-toc" aria-label="Help contents">
+              <strong>Contents</strong>
+              <ol id="help-toc-list"></ol>
+            </nav>
+            <article id="help-content" class="help-content"></article>
+          </div>
+        </section>
+      </main>
+
+      <footer class="bottombar">
+        <div class="bottom-left">
+          <span id="status" data-tone="neutral" aria-live="polite"></span>
+        </div>
+
+        <div class="bottom-right">
+          <button id="connect" class="primary">Connect</button>
+          <button id="cancel" class="danger" disabled>Cancel</button>
+          <button id="disconnect" disabled>Disconnect</button>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+
+    <dialog id="risk-dialog" class="risk-dialog" aria-labelledby="risk-dialog-title" aria-describedby="risk-dialog-description">
+      <h2 id="risk-dialog-title">Use at your own risk</h2>
+      <p id="risk-dialog-description">
+        This software can modify the configuration stored in your AP510 tracker. Incorrect settings, communication failures, interrupted writes, or incompatible firmware may cause the tracker to malfunction or become unusable.
+      </p>
+      <p>
+        Make sure you have a backup of the original configuration before writing changes. The software is provided without warranty, and the author accepts no responsibility for damage, data loss, or a bricked tracker.
+      </p>
+      <p>Only proceed if you understand and accept these risks.</p>
+      <div class="risk-dialog-actions">
+        <button id="risk-confirm" class="primary" type="button">I understand and accept</button>
+      </div>
+    </dialog>
+
+    <dialog id="template-dialog" class="risk-dialog" aria-labelledby="template-dialog-title">
+      <h2 id="template-dialog-title">Save as template</h2>
+      <p>Values in this template will be applied to future trackers. Callsign and SSID are kept from each tracker by default.</p>
+      <label class="field"><span class="field-label">Name</span><input id="template-name" required maxlength="80"></label>
+      <label class="field"><span class="field-label">Description</span><input id="template-description-input" maxlength="200"></label>
+      <fieldset><legend>Keep from tracker</legend><div id="template-keep-fields"></div></fieldset>
+      <div class="risk-dialog-actions"><button id="template-cancel" type="button">Cancel</button><button id="template-confirm" class="primary" type="button">Save template</button></div>
+    </dialog>
+  </body>
+</html>

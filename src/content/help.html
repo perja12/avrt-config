@@ -1,0 +1,50 @@
+<section id="introduction">
+  <h2>Introduction</h2>
+  <p>The <i>__AP510_APP_NAME__</i> can be used to program the SainSonic AP510 and AVRT5 APRS devices. This progam uses Web Serial and the browser have to support this standard. Most modern browsers supports this by now.</p>
+
+  <aside class="help-warning">Important: this software has been tested on a limited number of trackers. Writing an incorrect configuration, interrupting a write, or using incompatible firmware may cause the tracker to malfunction. Keep a backup of the original configuration before writing changes. And proceed on your own risk.</aside>
+</section>
+
+<section id="tracker-configuration">
+  <h2>AP510 tracker configuration</h2>
+  <p>The <i>Configure</i> workspace contains the main functionality. This is where one can read the settings from the tracker, change them and write them back. The tracker settings are grouped as follows:
+    <ul>
+      <li>APRS: here you will find most of the APRS related settings like callsign, SSID, the APRS symbol to use and so on.</li>
+      <li>Beaconing: this groups shows the different options for when or how often to transmit an APRS packet</li>
+      <li>Radio: here you will find settings like TX frequency, TX power, squelch etc.</li>
+      <li>Device: here you can control device settings like enabling or disabling the LED, enable/disable beep when sending APRS packets etc.</li>
+    </ul>
+  </p>
+
+  <h2>How to connect the tracker</h2>
+
+  <aside class="help-warning">Important: do not use a regular USB cable! The mini USB connector in the tracker is using UART.</aside>
+
+  <p>Use the programming cable that came with the device and connect the tracker with power off. Or you can also create your own cable or buy one. That is a good option if your OS doesn't recognize the serial driver in the cable.</p>
+
+  <ol>
+    <li>Click the <i>Connect</i> button and choose the serial port that corresponds to the device. If you can't identify the port: try to unplug the cable, click connect and make a note of the available options. Then re-insert the cable and click <i>Connect</i> again. Then you should hopefully be able to identify the correct port.</li>
+    <li>Next click the <i>Read</i> button to read the configuration from the device. Now you must power on the tracker by keeping the button pressed until the tracker beeps. The program then reads the configuration.</li>
+    <li>Change the values as you want and click <i>Write</i> to store the configuration in the tracker.</li>
+    <li>Click <i>Disconnect</i> to disconnect from the serial port.</li>
+  </ol>
+
+  That should be it if everything went fine.
+
+</section>
+
+<section id="templates">
+  <h2>How to use templates</h2>
+  <p>Templates let you apply a consistent set of settings to multiple trackers. Values such as callsign and SSID can be kept from each individual tracker.</p>
+  <ol>
+    <li>Start by configuring a tracker with the desired settings in the <i>Configure</i> panel. Then press the <i>Save as template...</i> button.</li>
+    <li>Choose the fields that should be kept for each tracker. For example if callsign and SSID can be marked they will not be set by the template, but taken from each tracker.</li>
+    <li>Save the template with the desired name. The template will be saved in the web browser, but you can later export it from <i>Manage Templates</i>.</li>
+    <li>Then go to the <i>Templates</i> panel, select the newly saved template and use the <i>Read</i> and <i>Apply template</i> buttons program the trackers one by one.</li>
+  </ol>
+</section>
+
+<section id="field-documentation">
+  <h2>Per-field documentation</h2>
+  <p>The sections below describe the various fields that can be configured.</p>
+</section>
