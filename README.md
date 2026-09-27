@@ -6,7 +6,7 @@ A browser-based configurator for SainSonic AP510 and AVRT5 APRS trackers. It use
 This software has been built as a [Progressive Web App (PWA)](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps) and can be installed so that it is easily accesible from the desktop. It should also work without any network connectivity.
 
 [!NOTE]
-The cable for programming these devices is not a regular USB cable! It looks like a regular USB cable, but the programming cable has a serial chip built-in. Either use the one that came with the tracker or build your own. I will over time add instructions for this. See for example this [link](https://www.richardmudhar.com/blog/2018/10/sainsonic-ap510-aprs-tracker-experiments/).
+>The cable for programming these devices is not a regular USB cable! It looks like a regular USB cable, but the programming cable has a serial chip built-in. Either use the one that came with the tracker or build your own. I will over time add instructions for this. See for example this [link](https://www.richardmudhar.com/blog/2018/10/sainsonic-ap510-aprs-tracker-experiments/).
 
 I hope that the software can be useful and make it easer to program these trackers. Let me know if you see any problems by [creating an issue report](https://github.com/perja12/avrt-config/issues).
 
