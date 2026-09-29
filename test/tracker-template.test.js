@@ -133,6 +133,61 @@ describe("tracker templates", () => {
     expect(JSON.parse(repository.export())).toHaveLength(1);
   });
 
+  it("rejects template names that match after trimming and lowercasing", () => {
+    const values = new Map();
+    const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+    const repository = createTemplateRepository(storage);
+    const original = createTrackerTemplate({ name: "Test 3", dto, schema });
+    repository.save(original);
+
+    const duplicate = createTrackerTemplate({ name: "  TEST 3  ", dto, schema });
+    expect(() => repository.save(duplicate)).toThrow(/template name already exists/i);
+    expect(repository.list()).toHaveLength(1);
+
+    const renamed = { ...original, name: " test 3 " };
+    repository.save(renamed);
+    expect(repository.list()).toHaveLength(1);
+    expect(repository.list()[0].name).toBe(" test 3 ");
+
+    const other = createTrackerTemplate({ name: "Other", dto, schema });
+    repository.save(other);
+    expect(() => repository.save({ ...other, name: "TEST 3" })).toThrow(/template name already exists/i);
+    expect(repository.list().find((template) => template.id === other.id)?.name).toBe("Other");
+  });
+
+  it("rejects duplicate names during import without changing saved templates", () => {
+    const values = new Map();
+    const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+    const repository = createTemplateRepository(storage);
+    repository.save(createTrackerTemplate({ name: "Test 3", dto, schema }));
+
+    const existingName = createTrackerTemplate({ name: " TEST 3 ", dto, schema });
+    expect(() => repository.import([existingName])).toThrow(/template name already exists/i);
+    expect(repository.list()).toHaveLength(1);
+
+    const first = createTrackerTemplate({ name: "Another", dto, schema });
+    const second = createTrackerTemplate({ name: " another ", dto, schema });
+    expect(() => repository.import([first, second], { replace: true })).toThrow(/template name already exists/i);
+    expect(repository.list()[0].name).toBe("Test 3");
+  });
+
+  it("allows a new name when older saved templates already contain duplicates", () => {
+    const oldA = createTrackerTemplate({ name: "Test 3", dto, schema });
+    const oldB = createTrackerTemplate({ name: " TEST 3 ", dto, schema });
+    const values = new Map([["ap510-templates-v1", JSON.stringify([oldA, oldB])]]);
+    const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+    const repository = createTemplateRepository(storage);
+
+    const fresh = createTrackerTemplate({ name: "Test 333", dto, schema });
+    repository.save(fresh);
+    expect(repository.list()).toHaveLength(3);
+    expect(() => repository.save(createTrackerTemplate({ name: "test 3", dto, schema }))).toThrow(/template name already exists/i);
+    expect(() => repository.save(createTrackerTemplate({ name: "TEST 333", dto, schema }))).toThrow(/template name already exists/i);
+
+    repository.import([createTrackerTemplate({ name: "Imported", dto, schema })]);
+    expect(repository.list()).toHaveLength(4);
+  });
+
   it("applies a template to a real parsed configuration without replacing its unknown records", async () => {
     const config = parseTrackerConfig(await readFile(new URL("./fixtures/late_config.ini", import.meta.url)));
     const source = config.toDTO();

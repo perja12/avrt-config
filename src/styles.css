@@ -92,6 +92,15 @@
         color: var(--muted);
       }
 
+      .risk-dialog .template-dialog-error {
+        margin: 0.75rem 0 0;
+        padding: 0.65rem 0.8rem;
+        border: 1px solid var(--red);
+        border-radius: var(--radius);
+        color: var(--red);
+        background: #fff2f2;
+      }
+
       .risk-dialog-actions {
         display: flex;
         justify-content: flex-end;

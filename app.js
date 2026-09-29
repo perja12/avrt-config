@@ -67,6 +67,7 @@ const elements = {
   saveTemplate: document.querySelector("#save-template"),
   templateDialog: document.querySelector("#template-dialog"),
   templateName: document.querySelector("#template-name"),
+  templateSaveError: document.querySelector("#template-save-error"),
   templateDescriptionInput: document.querySelector("#template-description-input"),
   templateKeepFields: document.querySelector("#template-keep-fields"),
   templateCancel: document.querySelector("#template-cancel"),
@@ -237,11 +238,17 @@ elements.riskConfirm.addEventListener("click", () => {
 elements.saveTemplate.addEventListener("click", () => {
   if (!workflow.draft) return;
   elements.templateName.value = "";
+  elements.templateSaveError.textContent = "";
+  elements.templateSaveError.hidden = true;
   elements.templateDescriptionInput.value = "";
   renderTemplateKeepFields();
   elements.templateDialog.showModal();
 });
 elements.templateCancel.addEventListener("click", () => elements.templateDialog.close());
+elements.templateName.addEventListener("input", () => {
+  elements.templateSaveError.textContent = "";
+  elements.templateSaveError.hidden = true;
+});
 elements.templateConfirm.addEventListener("click", () => {
   try {
     const keepPaths = [...elements.templateKeepFields.querySelectorAll("input:checked")].map((input) => input.dataset.path);
@@ -258,7 +265,8 @@ elements.templateConfirm.addEventListener("click", () => {
     renderTemplates();
     setStatus(`Template “${template.name}” saved`);
   } catch (error) {
-    setStatus(error.message, "error");
+    elements.templateSaveError.textContent = error.message;
+    elements.templateSaveError.hidden = false;
   }
 });
 elements.templateSelect.addEventListener("change", () => {

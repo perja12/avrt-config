@@ -136,6 +136,7 @@ export function createTemplateRepository(storage, key = "ap510-templates-v1", { 
     save(template) {
       assertValidTrackerTemplate(template, { schema });
       const templates = read().filter((item) => item.id !== template.id);
+      assertNewTemplateNames(templates, [template]);
       templates.push(structuredClone(template));
       write(templates);
       return template;
@@ -146,11 +147,22 @@ export function createTemplateRepository(storage, key = "ap510-templates-v1", { 
       const incoming = typeof json === "string" ? JSON.parse(json) : json;
       if (!Array.isArray(incoming)) throw new TypeError("import must contain an array of templates");
       incoming.forEach((template) => assertValidTrackerTemplate(template, { schema }));
-      const merged = replace ? incoming : [...read(), ...incoming.map((template) => ({ ...template, id: cryptoRandomId() }))];
+      const existing = replace ? [] : read();
+      assertNewTemplateNames(existing, incoming);
+      const merged = replace ? incoming : [...existing, ...incoming.map((template) => ({ ...template, id: cryptoRandomId() }))];
       write(merged);
       return merged;
     },
   };
+}
+
+function assertNewTemplateNames(existing, incoming) {
+  const names = new Set(existing.map((template) => template.name.trim().toLowerCase()));
+  for (const template of incoming) {
+    const normalizedName = template.name.trim().toLowerCase();
+    if (names.has(normalizedName)) throw new TypeError(`template name already exists: ${template.name.trim()}`);
+    names.add(normalizedName);
+  }
 }
 
 function eligiblePaths(dto, schema) {
