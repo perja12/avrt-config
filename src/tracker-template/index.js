@@ -1,6 +1,12 @@
 const TEMPLATE_FORMAT = "ap510-template";
 const TEMPLATE_SCHEMA_VERSION = 1;
 const DEFAULT_KEEP_PATHS = ["identity.callsign", "identity.ssid"];
+const KEEP_FIELD_DEFAULTS = Object.freeze({
+  "identity.callsign": "NOCALL",
+  "identity.ssid": 0,
+  "text.comment": "",
+  "text.status": "",
+});
 
 export { DEFAULT_KEEP_PATHS, TEMPLATE_FORMAT, TEMPLATE_SCHEMA_VERSION };
 
@@ -13,8 +19,15 @@ export function createTrackerTemplate({ name, description = "", dto, keepPaths =
     if (unsupported) throw new TypeError(`field cannot be kept from tracker: ${unsupported}`);
   }
   const apply = {};
+  const defaults = {};
   for (const path of eligiblePaths(dto, schema)) {
-    if (!keep.includes(path)) apply[path] = structuredClone(getPath(dto, path));
+    if (keep.includes(path)) {
+      if (!Object.hasOwn(KEEP_FIELD_DEFAULTS, path)) defaults[path] = structuredClone(getPath(dto, path));
+    }
+    else apply[path] = structuredClone(getPath(dto, path));
+  }
+  for (const path of keep) {
+    if (Object.hasOwn(KEEP_FIELD_DEFAULTS, path)) defaults[path] = KEEP_FIELD_DEFAULTS[path];
   }
   return {
     format: TEMPLATE_FORMAT,
@@ -25,6 +38,7 @@ export function createTrackerTemplate({ name, description = "", dto, keepPaths =
     compatibility: { profile: dto.metadata?.profile ?? null },
     keepPaths: keep,
     values: apply,
+    defaults,
   };
 }
 
@@ -38,10 +52,15 @@ export function validateTrackerTemplate(template, { schema = null } = {}) {
   if (template.compatibility?.profile !== null && template.compatibility?.profile !== undefined && typeof template.compatibility.profile !== "string") errors.push("compatibility profile must be text or null");
   if (!Array.isArray(template.keepPaths)) errors.push("keepPaths must be an array");
   if (!template.values || typeof template.values !== "object" || Array.isArray(template.values)) errors.push("values must be an object");
+  if (template.defaults !== undefined && (!template.defaults || typeof template.defaults !== "object" || Array.isArray(template.defaults))) errors.push("defaults must be an object");
   const keep = Array.isArray(template.keepPaths) ? normalizePaths(template.keepPaths, errors) : [];
   const paths = template.values && typeof template.values === "object" ? Object.keys(template.values) : [];
   for (const path of paths) {
     if (keep.includes(path)) errors.push(`path cannot be both kept and applied: ${path}`);
+    if (schema && !schema.fields?.[path]) errors.push(`unsupported template field: ${path}`);
+  }
+  for (const path of Object.keys(template.defaults && typeof template.defaults === "object" && !Array.isArray(template.defaults) ? template.defaults : {})) {
+    if (!keep.includes(path)) errors.push(`default requires a kept field: ${path}`);
     if (schema && !schema.fields?.[path]) errors.push(`unsupported template field: ${path}`);
   }
   return { valid: errors.length === 0, errors };
@@ -62,7 +81,31 @@ export function applyTrackerTemplate(dto, template, { schema = null } = {}) {
   }
   const result = structuredClone(dto);
   for (const [path, value] of Object.entries(template.values)) setPath(result, path, structuredClone(value));
+  for (const path of template.keepPaths) {
+    const value = templateDefaultValue(template, path);
+    if (value === undefined) continue;
+    const current = getPath(result, path);
+    if (current === null || current === undefined || current === "") setPath(result, path, structuredClone(value));
+  }
   return result;
+}
+
+export function prepareTrackerTemplate(dto, template, overrides = {}, { schema = null } = {}) {
+  const result = applyTrackerTemplate(dto, template, { schema });
+  for (const [path, value] of Object.entries(overrides)) {
+    if (template.keepPaths.includes(path)) setPath(result, path, structuredClone(value));
+  }
+  return result;
+}
+
+export function templateDefaultValue(template, path) {
+  if (!template.keepPaths?.includes(path)) return undefined;
+  if (Object.hasOwn(template.defaults ?? {}, path)) return template.defaults[path];
+  return KEEP_FIELD_DEFAULTS[path];
+}
+
+export function templateSourceDTO(template) {
+  return applyTrackerTemplate({}, template);
 }
 
 export function templateChanges(before, after, paths = null) {

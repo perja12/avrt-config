@@ -6,8 +6,12 @@ import {
   applyTrackerTemplate,
   createTemplateRepository,
   createTrackerTemplate,
+  prepareTrackerTemplate,
+  templateDefaultValue,
+  templateSourceDTO,
   validateTrackerTemplate,
 } from "../src/tracker-template/index.js";
+import { preflightTemplateWrite } from "../src/tracker-template/preflight.js";
 
 const schema = { fields: {
   "identity.callsign": {}, "identity.ssid": {}, "text.comment": {}, "transmission.frequencyMHz": {},
@@ -25,9 +29,77 @@ describe("tracker templates", () => {
     const target = { identity: { callsign: "LB2KK", ssid: 7 }, text: { comment: "old" }, transmission: { frequencyMHz: 145.5 } };
     const merged = applyTrackerTemplate(target, template, { schema });
 
+    expect(template.defaults).toEqual({ "identity.callsign": "NOCALL", "identity.ssid": 0 });
     expect(merged.identity).toEqual(target.identity);
     expect(merged.text.comment).toBe("standard");
     expect(merged.transmission.frequencyMHz).toBe(144.8);
+    expect(templateSourceDTO(template)).toEqual({ ...dto, identity: { callsign: "NOCALL", ssid: 0 } });
+  });
+
+  it("keeps saved defaults when a template is edited", () => {
+    const original = createTrackerTemplate({ name: "Fleet", dto, keepPaths: ["identity.callsign", "identity.ssid", "text.comment"], schema });
+    const updated = createTrackerTemplate({ name: "Fleet updated", dto: templateSourceDTO(original), keepPaths: original.keepPaths, schema });
+    expect(updated.defaults).toEqual(original.defaults);
+    expect(applyTrackerTemplate({ identity: { callsign: "LB2KK", ssid: 7 }, text: { comment: "tracker" } }, updated, { schema }).text.comment).toBe("tracker");
+  });
+
+  it("uses fixed defaults for every standard kept field, regardless of source values", () => {
+    const source = { ...dto, text: { comment: "source comment", status: "source status" } };
+    const template = createTrackerTemplate({ name: "Fleet", dto: source, keepPaths: ["identity.callsign", "identity.ssid", "text.comment", "text.status"], schema: { fields: { ...schema.fields, "text.status": {} } } });
+    expect(template.defaults).toEqual({
+      "identity.callsign": "NOCALL", "identity.ssid": 0, "text.comment": "", "text.status": "",
+    });
+    expect(templateSourceDTO(template).text).toEqual({ comment: "", status: "" });
+  });
+
+  it("fills blank kept fields from saved defaults without replacing existing tracker values", () => {
+    const template = createTrackerTemplate({ name: "Fleet", dto, keepPaths: ["identity.callsign", "identity.ssid", "text.comment"], schema });
+    const target = { identity: { callsign: "", ssid: null }, text: { comment: "tracker comment" }, transmission: { frequencyMHz: 145.5 } };
+    const merged = applyTrackerTemplate(target, template, { schema });
+
+    expect(merged.identity).toEqual({ callsign: "NOCALL", ssid: 0 });
+    expect(merged.text.comment).toBe("tracker comment");
+    expect(merged.transmission.frequencyMHz).toBe(144.8);
+    expect(target.identity).toEqual({ callsign: "", ssid: null });
+  });
+
+  it("keeps legacy templates without saved defaults compatible", () => {
+    const template = createTrackerTemplate({ name: "Fleet", dto, keepPaths: ["identity.callsign"], schema });
+    delete template.defaults;
+    expect(validateTrackerTemplate(template, { schema }).valid).toBe(true);
+    expect(applyTrackerTemplate({ identity: { callsign: "" } }, template, { schema }).identity.callsign).toBe("NOCALL");
+    expect(templateSourceDTO(template).identity.callsign).toBe("NOCALL");
+  });
+
+  it("uses standard defaults when an older template has none, while respecting explicit values", () => {
+    const template = createTrackerTemplate({ name: "Fleet", dto, keepPaths: ["identity.ssid"], schema });
+    expect(templateDefaultValue(template, "identity.ssid")).toBe(0);
+    delete template.defaults["identity.ssid"];
+    expect(templateDefaultValue(template, "identity.ssid")).toBe(0);
+    expect(applyTrackerTemplate({ identity: { ssid: null } }, template, { schema }).identity.ssid).toBe(0);
+    template.defaults["identity.ssid"] = 9;
+    expect(applyTrackerTemplate({ identity: { ssid: null } }, template, { schema }).identity.ssid).toBe(9);
+    template.keepPaths.push("identity.callsign");
+    expect(templateDefaultValue(template, "identity.callsign")).toBe("NOCALL");
+  });
+
+  it("rebuilds a prepared candidate after a default changes and keeps device edits through preflight", async () => {
+    const template = createTrackerTemplate({ name: "Fleet", dto, keepPaths: ["identity.callsign", "text.comment"], schema });
+    const target = { identity: { callsign: "LB2KK", ssid: 7 }, text: { comment: "" }, transmission: { frequencyMHz: 145.5 } };
+    const overrides = { "identity.callsign": "NEW123" };
+    const before = prepareTrackerTemplate(target, template, overrides, { schema });
+    expect(before.text.comment).toBe("");
+
+    const updated = structuredClone(template);
+    updated.defaults["text.comment"] = "new default";
+    const after = prepareTrackerTemplate(target, updated, overrides, { schema });
+    expect(after.identity.callsign).toBe("NEW123");
+    expect(after.text.comment).toBe("new default");
+    expect(target.text.comment).toBe("");
+
+    const baseline = { sameRecordsAs: (current) => current === baseline };
+    const workflow = { readTrackerConfig: async () => ({ rawConfig: baseline }) };
+    expect((await preflightTemplateWrite(workflow, baseline, after)).candidateDto).toEqual(after);
   });
 
   it("does not store nullable source fields as template values", () => {
@@ -42,6 +114,7 @@ describe("tracker templates", () => {
     const result = validateTrackerTemplate({ format: "ap510-template", schemaVersion: 1, name: "x", keepPaths: ["text.comment"], values: { "text.comment": "x", "unknown.path": 1 } }, { schema });
     expect(result.valid).toBe(false);
     expect(result.errors.join(" ")).toMatch(/both kept|unsupported/);
+    expect(validateTrackerTemplate({ format: "ap510-template", schemaVersion: 1, name: "x", keepPaths: [], values: {}, defaults: { "text.comment": "old" } }, { schema }).valid).toBe(false);
   });
 
   it("rejects applying a template to a different firmware profile", () => {
@@ -56,6 +129,7 @@ describe("tracker templates", () => {
     const template = createTrackerTemplate({ name: "Fleet", dto, schema });
     repository.save(template);
     expect(repository.list()[0].name).toBe("Fleet");
+    expect(repository.list()[0].defaults).toEqual(template.defaults);
     expect(JSON.parse(repository.export())).toHaveLength(1);
   });
 

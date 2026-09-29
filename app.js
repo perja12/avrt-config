@@ -16,8 +16,8 @@ import { formatTrackerIdentity } from "./src/ui/tracker-identity.js";
 import { hasRiskAcknowledgement, storeRiskAcknowledgement } from "./src/ui/risk-acknowledgement.js";
 import { supportsWebSerial } from "./src/ui/browser-capabilities.js";
 import { applyDigipeaterSelector, clearAdvancedRawPacket, formatFixedPositionPacket } from "./src/tracker-config/index.js";
-import { applyTrackerTemplate, createTemplateRepository, createTrackerTemplate } from "./src/tracker-template/index.js";
-import { templateTargetChanged } from "./src/tracker-template/preflight.js";
+import { createTemplateRepository, createTrackerTemplate, prepareTrackerTemplate, templateDefaultValue, templateSourceDTO } from "./src/tracker-template/index.js";
+import { preflightTemplateWrite } from "./src/tracker-template/preflight.js";
 import { createTemplateHistoryRepository } from "./src/tracker-template/history.js";
 import { generalHelpHtml } from "./src/ui/help-content.js";
 import { APP_METADATA } from "./src/app-metadata.js";
@@ -292,27 +292,43 @@ elements.templateManageSelect.addEventListener("change", () => {
   renderTemplates();
 });
 elements.templateManageSave.addEventListener("click", () => {
+  if (workflow.currentOperation) return;
   const existing = listTemplates().find((template) => template.id === selectedTemplateId);
   if (!existing) return;
   try {
     const keepPaths = [...elements.templateManageKeepFields.querySelectorAll("input:checked")].map((input) => input.dataset.path);
     const preservedLegacyKeepPaths = existing.keepPaths.filter((path) => configSchema.fields[path]?.templateKeepAllowed !== true);
+    const source = templateSourceDTO(existing);
+    for (const control of elements.templateManageKeepFields.querySelectorAll("[data-default-path]")) {
+      if (!control.checkValidity()) throw new Error(`Invalid default for ${configSchema.fields[control.dataset.defaultPath]?.label ?? control.dataset.defaultPath}`);
+      setPathValueInPlace(source, control.dataset.defaultPath, normalizeTemplateOverrideValue(control.value, configSchema.fields[control.dataset.defaultPath]));
+    }
     const updated = createTrackerTemplate({
       name: elements.templateManageName.value,
       description: elements.templateManageDescription.value,
-      dto: applyTrackerTemplate({}, existing, { schema: configSchema }),
+      dto: source,
       keepPaths: [...new Set([...keepPaths, ...preservedLegacyKeepPaths])],
       schema: null,
     });
     updated.id = existing.id;
     updated.compatibility = structuredClone(existing.compatibility ?? { profile: null });
+    for (const path of updated.keepPaths) {
+      if (!existing.keepPaths.includes(path)) continue;
+      const value = getPath(source, path);
+      if (value !== undefined && value !== null) updated.defaults[path] = value;
+    }
     templateRepository.save(updated);
-    elements.templateStatus.textContent = "Template changes saved";
+    templateOverrides = Object.fromEntries(Object.entries(templateOverrides).filter(([path]) => updated.keepPaths.includes(path)));
+    if (templatePrepared && templateTargetDto && !templateNeedsReview) prepareSelectedTemplate();
+    else { templatePrepared = false; templateCandidateDto = null; }
+    templateWriteVerified = false;
     renderTemplates();
+    elements.templateStatus.textContent = "Template changes saved";
   } catch (error) { elements.templateStatus.textContent = error.message; }
 });
 elements.templateManageName.addEventListener("input", updateManageSaveState);
 elements.templateManageDescription.addEventListener("input", updateManageSaveState);
+elements.templateManageKeepFields.addEventListener("input", updateManageSaveState);
 elements.templateManageKeepFields.addEventListener("change", updateManageSaveState);
 
 elements.templateRead.addEventListener("click", async () => {
@@ -339,17 +355,16 @@ elements.templateWrite.addEventListener("click", async () => {
     const missing = getMissingTemplateFields();
     if (missing.length > 0) throw new Error(`Enter values for: ${missing.map((path) => configSchema.fields[path]?.label ?? path).join(", ")}`);
     const baseline = templateBaselineRaw;
+    const candidate = templateCandidateDto;
     templatePrepared = false;
     templateWriteVerified = false;
     templateCandidateDto = null;
     templateTargetDto = null;
     templateOverrides = {};
-    const config = await workflow.readTrackerConfig({ updateDraft: false });
-    const current = config.rawConfig;
+    const { config, changed, candidateDto } = await preflightTemplateWrite(workflow, baseline, candidate);
     templateTargetDto = config.toDTO();
-    prepareSelectedTemplate();
-    if (templateTargetChanged(baseline, current)) {
-      templateBaselineRaw = current;
+    if (changed) {
+      templateBaselineRaw = config.rawConfig;
       templateWriteVerified = false;
       templatePrepared = false;
       templateNeedsReview = true;
@@ -359,7 +374,7 @@ elements.templateWrite.addEventListener("click", async () => {
       renderTemplates();
       return;
     }
-    latestConfig = await workflow.writeTrackerConfig({ draft: templateCandidateDto, updateDraft: false });
+    latestConfig = await workflow.writeTrackerConfig({ draft: candidateDto, updateDraft: false });
     templatePrepared = false;
     templateCandidateDto = null;
     templateWriteVerified = true;
@@ -820,7 +835,7 @@ function renderManagedTemplates(templates) {
 
 function renderManageKeepFields(template) {
   elements.templateManageKeepFields.replaceChildren();
-  const source = applyTrackerTemplate({}, template, { schema: configSchema });
+  const source = templateSourceDTO(template);
   const paths = [...new Set([
     ...Object.keys(template.values),
     ...Object.keys(configSchema.fields).filter((path) => configSchema.fields[path].templateKeepAllowed === true),
@@ -841,7 +856,28 @@ function renderManageKeepFields(template) {
     label.scope = "row";
     label.textContent = configSchema.fields[path].label ?? path;
     const value = document.createElement("td");
-    value.textContent = formatTemplateValue(getPath(source, path));
+    const savedValue = getPath(source, path);
+    if (template.keepPaths.includes(path) && configSchema.fields[path].templateKeepAllowed === true) {
+      const rule = configSchema.fields[path];
+      const control = rule.type === "select" ? document.createElement("select") : document.createElement("input");
+      control.className = "field-control";
+      control.dataset.defaultPath = path;
+      control.setAttribute("aria-label", `Default ${rule.label ?? path}`);
+      if (rule.type === "select") {
+        for (const option of rule.options ?? []) control.append(new Option(option.label, option.value));
+      } else {
+        control.type = rule.type === "number" ? "number" : "text";
+        if (rule.maxLength !== undefined) control.maxLength = rule.maxLength;
+        if (rule.pattern !== undefined) control.pattern = rule.pattern;
+        if (path === "identity.callsign") control.required = true;
+      }
+      control.value = savedValue === null || savedValue === undefined ? "" : String(savedValue);
+      value.append("Default: ", control);
+    } else {
+      value.textContent = template.keepPaths.includes(path) && savedValue !== undefined
+        ? `Default: ${formatTemplateValue(savedValue)}`
+        : formatTemplateValue(savedValue);
+    }
     const choice = document.createElement("td");
     const input = document.createElement("input");
     if (configSchema.fields[path].templateKeepAllowed === true) {
@@ -867,9 +903,15 @@ function updateManageSaveState() {
   }
   const keepPaths = [...elements.templateManageKeepFields.querySelectorAll("input:checked")].map((input) => input.dataset.path).sort();
   const originalKeepPaths = existing.keepPaths.filter((path) => configSchema.fields[path]?.templateKeepAllowed === true).sort();
-  elements.templateManageSave.disabled = elements.templateManageName.value.trim() === existing.name
+  const defaultsChanged = [...elements.templateManageKeepFields.querySelectorAll("[data-default-path]")]
+    .some((control) => {
+      const value = templateDefaultValue(existing, control.dataset.defaultPath);
+      return control.value !== (value === undefined ? "" : String(value));
+    });
+  elements.templateManageSave.disabled = Boolean(workflow.currentOperation) || (elements.templateManageName.value.trim() === existing.name
     && elements.templateManageDescription.value === (existing.description ?? "")
-    && JSON.stringify(keepPaths) === JSON.stringify(originalKeepPaths);
+    && JSON.stringify(keepPaths) === JSON.stringify(originalKeepPaths)
+    && !defaultsChanged);
 }
 
 function renderTemplateContent(template) {
@@ -882,7 +924,6 @@ function renderTemplateContent(template) {
     elements.templateSettingsContent.append(empty);
     return;
   }
-  const dto = templateCandidateDto ?? (workflow.draft ? applyTrackerTemplate(workflow.draft, template, { schema: configSchema }) : applyTrackerTemplate({}, template, { schema: configSchema }));
   const currentDto = workflow.originalConfig?.toDTO?.() ?? null;
   const paths = [...new Set([...Object.keys(template.values), ...template.keepPaths])].sort((left, right) => {
     const leftKeep = template.keepPaths.includes(left) ? 0 : 1;
@@ -900,35 +941,42 @@ function renderTemplateContent(template) {
   for (const path of paths) {
     const row = document.createElement("tr");
     const label = configSchema.fields[path]?.label ?? path;
-    const value = getPath(dto, path);
+    const kept = template.keepPaths.includes(path);
+    const value = kept ? templateDefaultValue(template, path) : template.values[path];
     const currentValue = getPath(currentDto, path);
-    if (!template.keepPaths.includes(path) && JSON.stringify(value) !== JSON.stringify(currentValue)) row.classList.add("will-change");
-    const editableKeptValue = Boolean(currentDto) && template.keepPaths.includes(path);
-    if (editableKeptValue && templateOverrides[path] !== undefined && JSON.stringify(templateOverrides[path]) !== JSON.stringify(currentValue)) row.classList.add("will-change");
-    const missingKeptValue = editableKeptValue && (currentValue === null || currentValue === undefined || currentValue === "") && templateOverrides[path] === undefined;
+    const candidateValue = templateCandidateDto ? getPath(templateCandidateDto, path) : currentValue;
+    if (!kept && JSON.stringify(value) !== JSON.stringify(currentValue)) row.classList.add("will-change");
+    const editableKeptValue = Boolean(currentDto) && kept;
+    if (editableKeptValue && JSON.stringify(candidateValue) !== JSON.stringify(currentValue)) row.classList.add("will-change");
+    const missingKeptValue = editableKeptValue && path === "identity.callsign"
+      && (candidateValue === null || candidateValue === undefined || candidateValue === "");
     if (missingKeptValue) row.classList.add("missing-value");
     row.innerHTML = "<th scope=\"row\"></th><td></td><td></td>";
     const labelCell = row.querySelector("th");
     labelCell.textContent = label;
-    if (template.keepPaths.includes(path)) {
+    if (kept) {
       const badge = document.createElement("span");
       badge.className = "keep-badge";
       badge.textContent = "Keep";
       labelCell.append(badge);
     }
-    row.querySelector("td:nth-child(2)").textContent = formatTemplateValue(value);
+    row.querySelector("td:nth-child(2)").textContent = kept
+      ? (value === undefined ? "No default" : `Default: ${value === "" ? "(empty)" : formatTemplateValue(value)}`)
+      : formatTemplateValue(value);
     const currentCell = row.querySelector("td:nth-child(3)");
     if (editableKeptValue) {
       currentCell.textContent = missingKeptValue ? "Missing — enter value: " : "";
       const rule = configSchema.fields[path];
       const control = rule.type === "select" ? document.createElement("select") : document.createElement("input");
       control.className = "field-control";
+      const editedValue = templateOverrides[path] !== undefined ? templateOverrides[path] : currentValue;
       if (rule.type === "select") {
+        control.append(new Option("Blank", ""));
         for (const option of rule.options ?? []) control.append(new Option(option.label, option.value));
-        control.value = templateOverrides[path] ?? (currentValue === null || currentValue === undefined ? "" : String(currentValue));
+        control.value = editedValue === null || editedValue === undefined ? "" : String(editedValue);
       } else {
         control.type = rule.type === "number" ? "number" : "text";
-        control.value = templateOverrides[path] ?? (currentValue === null || currentValue === undefined ? "" : String(currentValue));
+        control.value = editedValue === null || editedValue === undefined ? "" : String(editedValue);
       }
       if (rule.min !== undefined) control.min = String(rule.min);
       if (rule.max !== undefined) control.max = String(rule.max);
@@ -937,6 +985,12 @@ function renderTemplateContent(template) {
       control.setAttribute("aria-label", `${rule.label ?? path} for this tracker`);
       control.addEventListener("change", () => handleTemplateOverride(path, control.value, rule));
       currentCell.append(control);
+      if (templateOverrides[path] === undefined && (currentValue === null || currentValue === undefined || currentValue === "") && value !== undefined) {
+        const hint = document.createElement("small");
+        hint.className = "subtle";
+        hint.textContent = value === "" ? "Blank on tracker; default is empty." : `Blank on tracker; default ${formatTemplateValue(value)} will be applied.`;
+        currentCell.append(hint);
+      }
     } else {
       currentCell.textContent = formatTemplateValue(currentValue);
     }
@@ -1018,17 +1072,18 @@ function prepareSelectedTemplate() {
   const template = selectedTemplate();
   if (!template || (!workflow.draft && !templateTargetDto)) { templatePrepared = false; templateCandidateDto = null; return; }
   const target = templateTargetDto ?? workflow.draft;
-  const merged = applyTrackerTemplate(target, template, { schema: configSchema });
-  for (const [path, value] of Object.entries(templateOverrides)) setPathValueInPlace(merged, path, value);
-  templateCandidateDto = merged;
+  templateCandidateDto = prepareTrackerTemplate(target, template, templateOverrides, { schema: configSchema });
   templatePrepared = true;
 }
 
 function getMissingTemplateFields() {
   const template = selectedTemplate();
-  if (!template || !templateTargetDto) return [];
-  return template.keepPaths.filter((path) => getPath(templateTargetDto, path) === null || getPath(templateTargetDto, path) === undefined || getPath(templateTargetDto, path) === "")
-    .filter((path) => templateOverrides[path] === undefined || templateOverrides[path] === null || templateOverrides[path] === "");
+  if (!template || !templateTargetDto || !templateCandidateDto) return [];
+  return template.keepPaths.filter((path) => path === "identity.callsign")
+    .filter((path) => {
+      const value = getPath(templateCandidateDto, path);
+      return value === null || value === undefined || value === "";
+    });
 }
 
 function templateCandidateDirty() {

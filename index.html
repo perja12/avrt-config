@@ -132,7 +132,7 @@
         <main class="main-panel">
           <section class="page-head">
             <h1>Templates</h1>
-            <p class="subtle">Read a tracker, apply a template, and write the result. Settings marked “Keep from tracker” remain unchanged.</p>
+            <p class="subtle">Read a tracker, review its current values, then apply the template. Kept fields use the tracker's value, or the template default if blank.</p>
           </section>
           <div id="template-workspace-grid" class="template-workspace-grid">
             <section id="template-content" class="panel template-panel">
@@ -234,7 +234,7 @@
 
     <dialog id="template-dialog" class="risk-dialog" aria-labelledby="template-dialog-title">
       <h2 id="template-dialog-title">Save as template</h2>
-      <p>Values in this template will be applied to future trackers. Callsign and SSID are kept from each tracker by default.</p>
+      <p>Values in this template will be applied to future trackers. Fields kept from a tracker start with defaults of NOCALL for callsign, 0 for SSID, and empty comment and status. A tracker's existing values take priority.</p>
       <label class="field"><span class="field-label">Name</span><input id="template-name" required maxlength="80"></label>
       <label class="field"><span class="field-label">Description</span><input id="template-description-input" maxlength="200"></label>
       <fieldset><legend>Keep from tracker</legend><div id="template-keep-fields"></div></fieldset>
