@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getTrackerConfigSchema } from "../src/tracker-config/index.js";
 import { beaconingLayoutSections } from "../src/ui/beaconing-layout.js";
 
 describe("Beaconing layout view model", () => {
@@ -32,12 +33,44 @@ describe("Beaconing layout view model", () => {
     });
 
     expect(sections.map((section) => section.title)).toEqual([
-      "Transmit cadence",
+      "Fixed beacon interval",
       "Smart Beaconing",
       "Smart Beaconing symbols",
       "Position offset",
       "Fixed position",
     ]);
+    expect(sections.find((section) => section.title === "Fixed beacon interval")).toMatchObject({
+      description: [
+        "Used only in ",
+        { text: "Auto", italic: true },
+        " and ",
+        { text: "Manual+Auto", italic: true },
+        " modes.",
+      ],
+    });
+    expect(sections.find((section) => section.title === "Smart Beaconing")).toMatchObject({
+      description: [
+        "Automatically adjusts updates to your speed and turns. Used in ",
+        { text: "Smart", italic: true },
+        " and ",
+        { text: "Smart+Manual", italic: true },
+        " modes.",
+      ],
+      columns: 2,
+      narrowControls: true,
+      groups: [
+        {
+          title: "Regular position updates",
+          fieldPaths: ["smartBeaconing.lowSpeedKmh", "smartBeaconing.slowRateSeconds", "smartBeaconing.highSpeedKmh", "smartBeaconing.fastRateSeconds"],
+          footer: "Between these speed thresholds, faster movement gives shorter intervals, keeping roughly the same distance between reports.",
+        },
+        {
+          title: "Updates when turning",
+          description: "Send an earlier position update when your direction changes enough to report a corner.",
+          fieldPaths: ["smartBeaconing.turnAngleDegrees", "smartBeaconing.turnSlope", "smartBeaconing.turnTimeSeconds"],
+        },
+      ],
+    });
 
     expect(flattenFields(sections)).toMatchObject({
       "TX interval": "30",
@@ -49,24 +82,27 @@ describe("Beaconing layout view model", () => {
       "Fixed-position symbol code": ">",
       "Longitude offset": "-2",
       "Latitude offset": "3",
-      "Low speed": "5",
-      "Slow rate": "120",
-      "High speed": "70",
-      "Fast rate": "30",
-      "Turn slope": "240",
-      "Turn angle": "28",
-      "Turn time": "10",
+      "Slow-speed threshold": "5",
+      "Stopped/slow interval": "120",
+      "High-speed threshold": "70",
+      "High-speed interval": "30",
+      "Low-speed turn filtering (turn slope)": "240",
+      "Base turn angle": "28",
+      "Minimum spacing for turn updates": "10",
       "High-speed symbol": ">",
       "Moving symbol": "j",
       "Parked symbol": "P",
     });
 
     expect(findField(sections, "TX interval")).toMatchObject({ inputType: "number", unit: "s" });
-    expect(findField(sections, "Mode")).toMatchObject({ control: "select" });
-    expect(findField(sections, "Low speed")).toMatchObject({ inputType: "number", unit: "km/h" });
-    expect(findField(sections, "Turn angle")).toMatchObject({ inputType: "number", unit: "°" });
-    expect(findField(sections, "Turn slope")).toMatchObject({ inputType: "number", unit: "degree * km/h" });
-    expect(findField(sections, "Turn time")).toMatchObject({ inputType: "number", unit: "s", path: "smartBeaconing.turnTimeSeconds" });
+    expect(findField(sections, "Mode")).toMatchObject({ control: "select", tooltip: "Choose when the tracker sends position reports." });
+    expect(findField(sections, "Slow-speed threshold")).toMatchObject({ inputType: "number", unit: "km/h", tooltip: "At or below this speed, use the stopped/slow interval." });
+    expect(findField(sections, "Stopped/slow interval")).toMatchObject({ inputType: "number", unit: "seconds", tooltip: "How often to report while stopped or moving slowly." });
+    expect(findField(sections, "High-speed threshold")).toMatchObject({ inputType: "number", unit: "km/h", tooltip: "At or above this speed, use the high-speed interval." });
+    expect(findField(sections, "High-speed interval")).toMatchObject({ inputType: "number", unit: "seconds", tooltip: "How often to report at high speed. Turns may trigger earlier reports." });
+    expect(findField(sections, "Base turn angle")).toMatchObject({ inputType: "number", unit: "°", tooltip: "Smaller angles capture gentler bends. Larger angles require sharper turns." });
+    expect(findField(sections, "Low-speed turn filtering (turn slope)")).toMatchObject({ inputType: "number", unit: null, width: "normal", tooltip: "Higher values require larger turns at low speeds. Set to 1 to remove this adjustment." });
+    expect(findField(sections, "Minimum spacing for turn updates")).toMatchObject({ inputType: "number", unit: "seconds", path: "smartBeaconing.turnTimeSeconds", tooltip: "Limits how often turns trigger updates. Larger values mean fewer reports during frequent turns." });
     expect(findField(sections, "Moving symbol").path).toBe("symbols.moving.code");
     const symbolSection = sections.find((section) => section.title === "Smart Beaconing symbols");
     expect(symbolSection.columns).toBe(2);
@@ -110,9 +146,17 @@ describe("Beaconing layout view model", () => {
     expect(fields["Generated fixed-position packet"]).toBe("");
     expect(fields["Fixed latitude"]).toBe("");
     expect(fields["Longitude offset"]).toBe("");
-    expect(fields["Low speed"]).toBe("");
-    expect(fields["Turn slope"]).toBe("");
+    expect(fields["Slow-speed threshold"]).toBe("");
+    expect(fields["Low-speed turn filtering (turn slope)"]).toBe("");
     expect(findField(sections, "High altitude")).toBeUndefined();
+  });
+
+  it("combines the turn-slope hover guidance with the manual examples", () => {
+    const schema = getTrackerConfigSchema();
+    const sections = beaconingLayoutSections({}, { schema });
+    expect(findField(sections, "Low-speed turn filtering (turn slope)").tooltip).toContain("Set to 1");
+    expect(schema.fields["smartBeaconing.turnSlope"].help.details).toContain("100 for bicycles");
+    expect(schema.fields["smartBeaconing.turnSlope"].help.details).toContain("240 for cars or motorcycles");
   });
 
   it("handles null DTOs in the pre-read path", () => {

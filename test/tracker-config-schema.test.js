@@ -30,7 +30,15 @@ describe("Tracker configuration schema", () => {
       max: 174,
       step: 0.0001,
     });
-    expect(schema.fields["transmission.txPowerWatts"].step).toBe(0.5);
+    expect(schema.fields["transmission.txPowerWatts"]).toMatchObject({
+      type: "select",
+      nullable: false,
+      valueType: "number",
+      options: [
+        { value: "0.5", label: "0.5 W" },
+        { value: "1", label: "1 W" },
+      ],
+    });
     expect(schema.fields["identity.ssid"].valueType).toBe("number");
     expect(schema.fields["audioAndRadio.dcd"]).toMatchObject({
       type: "select",
@@ -76,7 +84,7 @@ describe("Tracker configuration schema", () => {
       max: 99,
     });
     expect(schema.fields["smartBeaconing.turnTimeSeconds"]).toMatchObject({ min: 1, max: 999 });
-    expect(schema.fields["smartBeaconing.turnSlope"].unit).toBe("degree * km/h");
+    expect(schema.fields["smartBeaconing.turnSlope"].unit).toBeUndefined();
     expect(schema.fields["chinaMapOffset.longitudeOffset"]).toMatchObject({ min: -45, max: 45 });
     expect(schema.fields["chinaMapOffset.enabled"].label).toBe("Enabled");
     expect(schema.fields["gps.virtual.enabled"].label).toBe("Use fixed position");
@@ -110,6 +118,20 @@ describe("Tracker configuration schema", () => {
       expect.objectContaining({ path: "audioAndRadio.dcd", code: "type" }),
       expect.objectContaining({ path: "audioAndRadio.lowLed", code: "type" }),
     ]));
+  });
+
+  it("accepts only the two transmitter power settings", () => {
+    for (const txPowerWatts of [0.5, 1]) {
+      expect(validateTrackerConfigDTO({ transmission: { txPowerWatts } })).toEqual({ valid: true, errors: [] });
+    }
+    for (const txPowerWatts of [0, 1.5, "0.5"]) {
+      expect(validateTrackerConfigDTO({ transmission: { txPowerWatts } }).errors).toContainEqual(
+        expect.objectContaining({ path: "transmission.txPowerWatts", code: txPowerWatts === "0.5" ? "type" : "invalid-option" }),
+      );
+    }
+    expect(validateTrackerConfigDTO({ transmission: { txPowerWatts: null } }).errors).toContainEqual(
+      expect.objectContaining({ path: "transmission.txPowerWatts", code: "required" }),
+    );
   });
 
   it("accepts valid partial DTOs and throws structured errors on demand", () => {

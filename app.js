@@ -1263,6 +1263,7 @@ function formLayout(sections, { disabled = false, schema = null, onChange = null
   for (const section of sections) {
     const sectionElement = document.createElement("section");
     sectionElement.className = "form-section";
+    if (section.narrowControls) sectionElement.classList.add("has-narrow-controls");
     sectionElement.style.setProperty("--field-columns", String(section.columns));
 
     const heading = document.createElement("h3");
@@ -1273,16 +1274,56 @@ function formLayout(sections, { disabled = false, schema = null, onChange = null
       const description = document.createElement("p");
       description.className = "form-section-description";
       if (section.descriptionTone) description.classList.add(`is-${section.descriptionTone}`);
-      description.textContent = section.description;
+      if (Array.isArray(section.description)) {
+        for (const part of section.description) {
+          if (typeof part === "string") {
+            description.append(document.createTextNode(part));
+          } else if (part.italic) {
+            const emphasis = document.createElement("em");
+            emphasis.textContent = part.text;
+            description.append(emphasis);
+          } else {
+            description.append(document.createTextNode(part.text));
+          }
+        }
+      } else {
+        description.textContent = section.description;
+      }
       sectionElement.append(description);
     }
 
-    const fields = document.createElement("div");
-    fields.className = "field-grid";
-    for (const field of section.fields) {
-      fields.append(readonlyField(field, { disabled, rule: schema?.fields?.[field.path], onChange }));
+    const groups = section.groups ?? [{ fieldPaths: section.fields.map((field) => field.path) }];
+    const fieldsByPath = new Map(section.fields.map((field) => [field.path, field]));
+    for (const group of groups) {
+      const groupElement = document.createElement("div");
+      groupElement.className = "form-field-group";
+      if (group.title) {
+        const groupHeading = document.createElement("h4");
+        groupHeading.textContent = group.title;
+        groupElement.append(groupHeading);
+      }
+      if (group.description) {
+        const groupDescription = document.createElement("p");
+        groupDescription.className = "form-group-description";
+        groupDescription.textContent = group.description;
+        groupElement.append(groupDescription);
+      }
+      const fields = document.createElement("div");
+      fields.className = "field-grid";
+      fields.style.setProperty("--field-columns", String(group.columns ?? section.columns));
+      for (const path of group.fieldPaths) {
+        const field = fieldsByPath.get(path);
+        if (field) fields.append(readonlyField(field, { disabled, rule: schema?.fields?.[field.path], onChange }));
+      }
+      groupElement.append(fields);
+      if (group.footer) {
+        const footer = document.createElement("p");
+        footer.className = "form-group-footer";
+        footer.textContent = group.footer;
+        groupElement.append(footer);
+      }
+      sectionElement.append(groupElement);
     }
-    sectionElement.append(fields);
     wrapper.append(sectionElement);
   }
 
@@ -1295,9 +1336,11 @@ function readonlyField(field, { disabled = false, rule = null, onChange = null }
   if (field.path) label.dataset.fieldPath = field.path;
   if (field.width === "compact") label.classList.add("field-compact");
 
-  const helpSummary = rule?.help?.summary;
-  if (helpSummary) {
-    label.title = helpSummary;
+  const helpText = field.tooltip
+    ? [field.tooltip, rule?.help?.details].filter(Boolean).join(" ")
+    : rule?.help?.summary;
+  if (helpText) {
+    label.title = helpText;
   }
 
   const caption = document.createElement("span");
@@ -1307,7 +1350,7 @@ function readonlyField(field, { disabled = false, rule = null, onChange = null }
   const value = field.control === "select" ? document.createElement("select") : document.createElement("input");
   value.className = "field-control";
   value.setAttribute("aria-readonly", "true");
-  if (helpSummary) value.title = helpSummary;
+  if (helpText) value.title = helpText;
 
   if (field.control === "checkbox") {
     value.type = "checkbox";

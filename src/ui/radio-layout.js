@@ -10,7 +10,15 @@ export function radioLayoutSections(dto = {}, { blankEmpty = false, schema = nul
       columns: 3,
       fields: [
         numberField(schemaLabel(schema, "transmission.frequencyMHz", "Frequency"), dto.transmission?.frequencyMHz ?? null, { empty: empty("unknown"), unit: "MHz", path: "transmission.frequencyMHz" }),
-        numberField(schemaLabel(schema, "transmission.txPowerWatts", "TX power"), dto.transmission?.txPowerWatts ?? null, { empty: empty("unknown"), unit: "W", path: "transmission.txPowerWatts" }),
+        textField(schemaLabel(schema, "transmission.txPowerWatts", "TX power"), dto.transmission?.txPowerWatts ?? null, {
+          control: "select",
+          empty: empty("unknown"),
+          options: schema?.fields?.["transmission.txPowerWatts"]?.options ?? [
+            { value: "0.5", label: "0.5 W" },
+            { value: "1", label: "1 W" },
+          ],
+          path: "transmission.txPowerWatts",
+        }),
         numberField(schemaLabel(schema, "transmission.pttDelayMs", "PTT delay"), dto.transmission?.pttDelayMs ?? null, { empty: empty("unknown"), unit: "ms", path: "transmission.pttDelayMs" }),
       ],
     },

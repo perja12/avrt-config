@@ -733,6 +733,28 @@
         color: var(--red);
       }
 
+      .form-field-group + .form-field-group {
+        margin-top: 1rem;
+      }
+
+      .form-field-group h4 {
+        margin: 0 0 0.35rem;
+      }
+
+      .form-section.has-narrow-controls .field-control {
+        max-width: 12rem;
+      }
+
+      .form-group-description,
+      .form-group-footer {
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.4;
+      }
+
+      .form-group-description { margin: 0 0 0.6rem; }
+      .form-group-footer { margin: 0.55rem 0 0; }
+
       .field-grid {
         display: grid;
         grid-template-columns: repeat(var(--field-columns, 2), minmax(0, 1fr));
