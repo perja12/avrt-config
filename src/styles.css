@@ -108,7 +108,8 @@
         margin-top: 1rem;
       }
 
-      .browser-support-warning {
+      .browser-support-warning,
+      .firmware-write-warning {
         margin-bottom: 0.85rem;
         border: 1px solid #d0ad58;
         border-left: 5px solid var(--amber);
@@ -367,7 +368,7 @@
       }
 
       .help-warning {
-        margin-top: 0.85rem;
+        margin: 0.85rem 0 1.5rem;
         padding: 0.75rem 1rem;
         border: 1px solid #e3b8ba;
         border-radius: 6px;
@@ -950,6 +951,14 @@
 
       details.panel > pre {
         margin: 0 1rem 1rem;
+      }
+
+      .diagnostics-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.65rem;
+        margin: 0 1rem 0.8rem;
       }
 
       pre {

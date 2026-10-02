@@ -204,6 +204,7 @@ const lateFields = new Map([
 const profiles = [
   {
     identifier: "avrt5-20210404",
+    firmwareLabel: "AVRT5 20210404",
     description: "AVRT5 final firmware (hardware verified)",
     firmwarePattern: /^AVRT5\s+20210404$/i,
     hardwareTested: true,
@@ -213,6 +214,7 @@ const profiles = [
   },
   {
     identifier: "avrt5-20200605",
+    firmwareLabel: "AVRT5 20200605",
     description: "AVRT5 firmware (hardware verified)",
     firmwarePattern: /^AVRT5\s+20200605$/i,
     hardwareTested: true,
@@ -243,3 +245,7 @@ const documentedNumberedProfile = {
 export function selectProfile(firmware) {
   return profiles.find((profile) => firmware !== null && profile.firmwarePattern.test(firmware)) ?? documentedNumberedProfile;
 }
+
+export const SUPPORTED_WRITE_FIRMWARES = Object.freeze(
+  profiles.filter((profile) => profile.hardwareTested).map((profile) => profile.firmwareLabel),
+);

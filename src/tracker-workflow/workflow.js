@@ -1,5 +1,5 @@
-import { getTrackerConfigSchema, parseTrackerConfig, validateTrackerConfigDTO } from "../tracker-config/index.js";
-import { TrackerWorkflowBusyError, TrackerWorkflowStateError, TrackerWorkflowVerificationError } from "./errors.js";
+import { getTrackerConfigSchema, parseTrackerConfig, SUPPORTED_WRITE_FIRMWARES, validateTrackerConfigDTO } from "../tracker-config/index.js";
+import { TrackerWorkflowBusyError, TrackerWorkflowStateError, TrackerWorkflowUnsupportedFirmwareError, TrackerWorkflowVerificationError } from "./errors.js";
 import { TrackerWorkflowState } from "./state.js";
 
 export class TrackerWorkflow {
@@ -23,6 +23,10 @@ export class TrackerWorkflow {
   get draftDirty() {
     if (!this.originalConfig || !this.draft) return false;
     return JSON.stringify(this.draft) !== JSON.stringify(this.originalConfig.toDTO());
+  }
+
+  get canWriteFirmware() {
+    return this.originalConfig?.rawConfig?.profile?.hardwareTested === true;
   }
 
   getConfigSchema() {
@@ -77,8 +81,8 @@ export class TrackerWorkflow {
     return this.#runOperation("read-config", { cancellable: true, signal }, async (operationSignal) => {
       this.#emitStatus("reading", "Reading tracker configuration");
       const rawBytes = await this.serialSession.readConfig({ signal: operationSignal });
-      this.#emit({ type: "raw-config-read", rawBytes });
       this.protocolVariant = this.serialSession.protocolVariant ?? this.serialSession.getProtocolVariant?.() ?? null;
+      this.#emit({ type: "raw-config-read", rawBytes, purpose: "read", protocolVariant: this.protocolVariant });
 
       const config = this.parseConfig(rawBytes);
       config.validateSerialCapture();
@@ -95,6 +99,12 @@ export class TrackerWorkflow {
   async writeTrackerConfig({ signal, draft = this.draft, updateDraft = true } = {}) {
     this.#assertIdle();
     this.#assertState([TrackerWorkflowState.LOADED], "write tracker configuration");
+    if (!this.canWriteFirmware) {
+      const firmware = this.originalConfig?.firmware?.raw ?? this.originalConfig?.rawConfig?.firmware?.() ?? "unknown";
+      throw new TrackerWorkflowUnsupportedFirmwareError(
+        `Writing is blocked for unverified firmware ${firmware}. Supported firmware: ${SUPPORTED_WRITE_FIRMWARES.join(", ")}. Report this version with Diagnostics and Activity at https://github.com/perja12/avrt-config/issues/new`,
+      );
+    }
 
     const validation = validateTrackerConfigDTO(draft);
     if (!validation.valid) {
@@ -112,6 +122,7 @@ export class TrackerWorkflow {
       const acknowledgement = await this.serialSession.writeConfig(candidate.rawConfig.records, writeOptions);
       this.#emitStatus("verifying", "Reading back tracker configuration for verification");
       const rawBytes = await this.serialSession.readConfig({ signal: operationSignal });
+      this.#emit({ type: "raw-config-read", rawBytes, purpose: "verification", protocolVariant: this.protocolVariant });
       const verified = this.parseConfig(rawBytes);
       verified.validateSerialCapture();
       if (!candidate.rawConfig.sameRecordsAs(verified.rawConfig)) {

@@ -59,6 +59,12 @@
           <div id="browser-support-warning" class="browser-support-warning" role="alert" hidden>
             Web Serial is not available in this browser, or it is disabled. Please use a current browser with Web Serial enabled, such as Firefox, Chrome, Edge, or Vivaldi, to connect to an AP510 tracker.
           </div>
+          <div id="unsupported-firmware-warning" class="firmware-write-warning" role="alert" hidden>
+            <strong>Writing blocked for firmware <span data-read-firmware></span>.</strong>
+            Supported for writing: <span data-supported-firmware></span>.
+            Please include the firmware version, the downloaded trace from Diagnostics, and relevant Activity details in
+            <a href="https://github.com/perja12/avrt-config/issues/new" target="_blank" rel="noopener noreferrer">a new issue report</a>.
+          </div>
 
           <div class="configure-grid">
             <div id="category-content" class="config-groups"></div>
@@ -105,6 +111,10 @@
 
               <details class="panel">
                 <summary>Diagnostics</summary>
+                <div class="diagnostics-actions">
+                  <button id="download-trace" type="button" disabled>Download trace (.json)</button>
+                  <span class="subtle">Kept in memory until this page closes or reloads. Review device settings before sharing.</span>
+                </div>
                 <pre id="debug"></pre>
               </details>
 
@@ -167,6 +177,12 @@
               <div class="workflow-actions">
                 <button id="template-read">Read</button>
                 <button id="template-write" class="primary" disabled>Apply template</button>
+              </div>
+              <div id="template-unsupported-firmware-warning" class="firmware-write-warning" role="alert" hidden>
+                <strong>Writing blocked for firmware <span data-read-firmware></span>.</strong>
+                Supported for writing: <span data-supported-firmware></span>.
+                Open Configure to download the trace from Diagnostics. Include it, the firmware version, and relevant Activity details in
+                <a href="https://github.com/perja12/avrt-config/issues/new" target="_blank" rel="noopener noreferrer">a new issue report</a>.
               </div>
               <p id="template-status" class="subtle" aria-live="polite"></p>
             </section>

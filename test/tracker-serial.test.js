@@ -145,6 +145,8 @@ describe("TrackerSerialSession", () => {
     expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "\r\nDISP\r\n"]);
     expect(events.map((event) => event.type)).toContain("tx");
     expect(events.map((event) => event.type)).toContain("rx");
+    expect(events.filter((event) => event.type === "rx" && event.bytes.length === 0)).toHaveLength(2);
+    expect(events.filter((event) => event.type === "rx").every((event) => event.timeoutMs === 250)).toBe(true);
     expect(events.some((event) => event.type === "status" && event.phase === "setup-detected")).toBe(true);
     expect(events.some((event) => event.type === "status" && event.phase === "capture-complete")).toBe(true);
   });

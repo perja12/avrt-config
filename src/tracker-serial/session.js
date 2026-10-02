@@ -196,7 +196,7 @@ export class TrackerSerialSession {
   async #read(options) {
     this.#throwIfAborted(options.signal);
     const chunk = await this.transport.read(options);
-    if (chunk?.length) this.#emit("rx", { bytes: chunk });
+    this.#emit("rx", { bytes: chunk ?? new Uint8Array(), timeoutMs: options.timeoutMs });
     return chunk ?? new Uint8Array();
   }
 

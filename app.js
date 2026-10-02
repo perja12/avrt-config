@@ -15,12 +15,13 @@ import { configChangeSummary } from "./src/ui/change-summary.js";
 import { formatTrackerIdentity } from "./src/ui/tracker-identity.js";
 import { hasRiskAcknowledgement, storeRiskAcknowledgement } from "./src/ui/risk-acknowledgement.js";
 import { supportsWebSerial } from "./src/ui/browser-capabilities.js";
-import { applyDigipeaterSelector, clearAdvancedRawPacket, formatFixedPositionPacket } from "./src/tracker-config/index.js";
+import { applyDigipeaterSelector, clearAdvancedRawPacket, formatFixedPositionPacket, SUPPORTED_WRITE_FIRMWARES } from "./src/tracker-config/index.js";
 import { createTemplateRepository, createTrackerTemplate, prepareTrackerTemplate, templateDefaultValue, templateSourceDTO } from "./src/tracker-template/index.js";
 import { preflightTemplateWrite } from "./src/tracker-template/preflight.js";
 import { createTemplateHistoryRepository } from "./src/tracker-template/history.js";
 import { generalHelpHtml } from "./src/ui/help-content.js";
 import { APP_METADATA } from "./src/app-metadata.js";
+import { createSessionTrace } from "./src/diagnostics/session-trace.js";
 
 const configureCategories = [
   { id: "aprs", label: "APRS", title: "APRS", subtitle: "Identity, symbol, paths and APRS network behavior." },
@@ -60,10 +61,13 @@ const elements = {
   appUpdateReload: document.querySelector("#app-update-reload"),
   status: document.querySelector("#status"),
   debug: document.querySelector("#debug"),
+  downloadTrace: document.querySelector("#download-trace"),
   log: document.querySelector("#log"),
   riskDialog: document.querySelector("#risk-dialog"),
   riskConfirm: document.querySelector("#risk-confirm"),
   browserSupportWarning: document.querySelector("#browser-support-warning"),
+  unsupportedFirmwareWarning: document.querySelector("#unsupported-firmware-warning"),
+  templateUnsupportedFirmwareWarning: document.querySelector("#template-unsupported-firmware-warning"),
   saveTemplate: document.querySelector("#save-template"),
   templateDialog: document.querySelector("#template-dialog"),
   templateName: document.querySelector("#template-name"),
@@ -143,6 +147,7 @@ elements.appVersions.forEach((element) => {
 });
 
 const mockTracker = new URLSearchParams(window.location.search).get("mockTracker");
+const sessionTrace = createSessionTrace({ build: String(buildId), mode: mockTracker ? `mock:${mockTracker}` : "web-serial" });
 const browserSupportsSerial = Boolean(mockTracker) || supportsWebSerial();
 const workflow = createBrowserTrackerWorkflow({
   mockTracker: mockTracker || false,
@@ -233,6 +238,17 @@ elements.riskDialog.addEventListener("cancel", (event) => {
 elements.riskConfirm.addEventListener("click", () => {
   storeRiskAcknowledgement(getLocalStorage());
   elements.riskDialog.close();
+});
+
+elements.downloadTrace.addEventListener("click", () => {
+  if (!sessionTrace.hasEvents) return;
+  const blob = new Blob([JSON.stringify(sessionTrace.snapshot(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "ap510-session-trace.json";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 });
 
 elements.saveTemplate.addEventListener("click", () => {
@@ -558,6 +574,8 @@ async function runUiAction(action) {
 }
 
 function handleWorkflowEvent(event) {
+  sessionTrace.record(event);
+  elements.downloadTrace.disabled = !sessionTrace.hasEvents;
   if (event.type === "draft-changed" || event.type === "draft-reset") {
     writeVerified = false;
   } else if (event.type === "state") {
@@ -580,7 +598,7 @@ function handleWorkflowEvent(event) {
     setStatus(event.error.message ?? String(event.error), "error");
     appendLog("error", `${event.operation}: ${event.error.message ?? String(event.error)}`);
   } else if (event.type === "raw-config-read") {
-    appendLog("workflow", `read ${event.rawBytes.length} raw bytes`);
+    appendLog("workflow", `${event.purpose === "verification" ? "read back" : "read"} ${event.rawBytes.length} raw bytes`);
   } else if (event.type === "config-loaded") {
     writeVerified = false;
     readProgress = null;
@@ -616,7 +634,7 @@ function handleSerialEvent(event) {
   } else if (event.type === "tx") {
     appendLog("tx", `${event.label}  ${hex(event.bytes)}`);
   } else if (event.type === "rx") {
-    appendLog("rx", hex(event.bytes));
+    if (event.bytes.length) appendLog("rx", hex(event.bytes));
   }
 }
 
@@ -810,17 +828,18 @@ function renderTemplates() {
   elements.templateDelete.disabled = !template;
   const missingTemplateFields = getMissingTemplateFields();
   const templateDirty = templateCandidateDirty();
-  elements.templateWrite.disabled = templateNeedsReview || missingTemplateFields.length > 0 || !templatePrepared || !templateDirty || Boolean(workflow.currentOperation);
+  elements.templateWrite.disabled = !workflow.canWriteFirmware || templateNeedsReview || missingTemplateFields.length > 0 || !templatePrepared || !templateDirty || Boolean(workflow.currentOperation);
   elements.templateSummary.textContent = "";
   elements.templateSummary.hidden = true;
   if (templatePrepared && !templateWriteVerified && !templateNeedsReview) {
     elements.templateStatus.textContent = missingTemplateFields.length > 0
       ? `Enter values for: ${missingTemplateFields.map((path) => configSchema.fields[path]?.label ?? path).join(", ")}.`
-      : templateDirty ? "Ready to write template." : "Tracker already matches this template.";
+      : !workflow.canWriteFirmware ? "Writing is blocked for this firmware. See the firmware notice." : templateDirty ? "Ready to write template." : "Tracker already matches this template.";
   }
   renderTemplateContent(template);
   renderTemplateDevices();
   renderTemplateWorkflowCard();
+  renderFirmwareWriteWarnings();
 }
 
 function renderManagedTemplates(templates) {
@@ -1144,7 +1163,7 @@ function renderControls() {
 
   elements.connect.disabled = busy || state !== TrackerWorkflowState.DISCONNECTED || !browserSupportsSerial;
   elements.read.disabled = busy || !connected || !browserSupportsSerial;
-  elements.write.disabled = busy || state !== TrackerWorkflowState.LOADED || !workflow.draftDirty || !browserSupportsSerial;
+  elements.write.disabled = busy || state !== TrackerWorkflowState.LOADED || !workflow.canWriteFirmware || !workflow.draftDirty || !browserSupportsSerial;
   elements.read.textContent = readButtonText({
     state,
     operationName: workflow.currentOperation?.name,
@@ -1163,6 +1182,18 @@ function renderControls() {
   renderChangeSummary();
   renderTemplates();
   if (state === TrackerWorkflowState.DISCONNECTED && !latestConfig) elements.status.textContent = "";
+}
+
+function renderFirmwareWriteWarnings() {
+  const blocked = workflow.state === TrackerWorkflowState.LOADED && !workflow.canWriteFirmware;
+  const firmware = workflow.originalConfig?.firmware?.raw ?? workflow.originalConfig?.rawConfig?.firmware?.() ?? "unknown";
+  for (const notice of [elements.unsupportedFirmwareWarning, elements.templateUnsupportedFirmwareWarning]) {
+    notice.hidden = !blocked;
+    if (blocked) {
+      notice.querySelector("[data-read-firmware]").textContent = firmware;
+      notice.querySelector("[data-supported-firmware]").textContent = SUPPORTED_WRITE_FIRMWARES.join(", ");
+    }
+  }
 }
 
 function renderTrackerIdentity() {

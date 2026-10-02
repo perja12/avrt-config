@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { MockTrackerSerialSession } from "../src/tracker-workflow/mock-session.js";
 import { parseTrackerConfig } from "../src/tracker-config/index.js";
+import { createBrowserTrackerWorkflow, TrackerWorkflowUnsupportedFirmwareError } from "../src/tracker-workflow/index.js";
+import { createSessionTrace } from "../src/diagnostics/session-trace.js";
 
 describe("MockTrackerSerialSession", () => {
   it("provides a missing-kept scenario with empty comment and status fields", async () => {
@@ -10,6 +12,24 @@ describe("MockTrackerSerialSession", () => {
     const config = parseTrackerConfig(raw);
     expect(config.text.comment).toBe("");
     expect(config.text.status).toBe("");
+  });
+  it("reads an unsupported mock firmware and blocks writes before upload", async () => {
+    const trace = createSessionTrace({ build: "test", mode: "mock:unsupported" });
+    const workflow = createBrowserTrackerWorkflow({ mockTracker: "unsupported", onEvent: trace.record });
+    const upload = vi.spyOn(workflow.serialSession, "writeConfig");
+
+    await workflow.connect();
+    const config = await workflow.readTrackerConfig();
+
+    expect(config.firmware.raw).toBe("AVRT5 20991231");
+    expect(config.metadata.profile).toBe("documented-numbered");
+    expect(config.metadata.hardwareTested).toBe(false);
+    expect(workflow.canWriteFirmware).toBe(false);
+    const capture = trace.snapshot().events.find((event) => event.type === "configuration-capture");
+    expect(capture).toMatchObject({ purpose: "read", byte_length: config.rawConfig.raw.length });
+    expect(Buffer.from(capture.bytes_base64, "base64")).toEqual(Buffer.from(config.rawConfig.raw));
+    await expect(workflow.writeTrackerConfig()).rejects.toBeInstanceOf(TrackerWorkflowUnsupportedFirmwareError);
+    expect(upload).not.toHaveBeenCalled();
   });
   it("simulates a readable tracker and emits progress events", async () => {
     const events = [];

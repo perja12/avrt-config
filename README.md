@@ -3,6 +3,8 @@
 A browser-based configurator for SainSonic AP510 and AVRT5 APRS trackers. It uses
 [Web Serial](https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API) to communicate with the tracker. It has been tested on a limited number of devices (around 20), but all of them with recent firmware. Please read the instructions carefully and proceed at your own risk when using this software. That said: I have been testing a lot and still haven't be able to brick any of the devices I have used.
 
+Writing is enabled for the hardware-tested firmware versions `AVRT5 20210404` and `AVRT5 20200605`. Other versions may be read, but writing is blocked. If your version is blocked, please include its firmware version, the downloaded trace from Diagnostics, and relevant Activity details in a [new issue report](https://github.com/perja12/avrt-config/issues/new).
+
 This software has been built as a [Progressive Web App (PWA)](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps) and can be installed so that it is easily accesible from the desktop. It should also work without any network connectivity.
 
 >[!NOTE]
@@ -43,10 +45,10 @@ pnpm build
 
 The final output after processing with Vite is in `dist/`.
 
-For development without hardware, append `?mockTracker=normal` to the app URL.
-This uses a simulated tracker and does not communicate with a physical device.
+For development without hardware, append `?mockTracker=normal` (or `?mockTracker=1`) to the app URL for a supported tracker. Use `?mockTracker=unsupported` to read a mock tracker with unverified firmware and check that Write and Apply template are blocked. Mock mode does not communicate with a physical device.
 
 Templates and programmed-device history are stored in browser local storage.
+Diagnostics has a Download trace button for serial bytes, configuration captures, and operation results. Traces stay in memory until the page is reloaded or closed, unless downloaded.
 
 ## Source layout
 

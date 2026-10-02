@@ -6,13 +6,14 @@ import {
   TrackerWorkflowBusyError,
   TrackerWorkflowState,
   TrackerWorkflowStateError,
+  TrackerWorkflowUnsupportedFirmwareError,
 } from "../src/tracker-workflow/index.js";
 
 function bytes(text) {
   return Uint8Array.from([...text].map((character) => character.charCodeAt(0)));
 }
 
-function makeConfig(rawBytes, { validateError = null, dto = null, recordsMatch = true, recordByte = 0x4e } = {}) {
+function makeConfig(rawBytes, { validateError = null, dto = null, recordsMatch = true, recordByte = 0x4e, hardwareTested = true } = {}) {
   const config = {
     rawBytes,
     validateSerialCapture() {
@@ -26,12 +27,13 @@ function makeConfig(rawBytes, { validateError = null, dto = null, recordsMatch =
     },
   };
   config.rawConfig = {
+    profile: { hardwareTested },
     records: [{ key: "01", value: new Uint8Array([recordByte]) }],
     sameRecordsAs(other) {
       return recordsMatch && other?.records?.length === 1 && other.records[0].key === "01" && other.records[0].value[0] === recordByte;
     },
   };
-  config.withDTO = (nextDto) => makeConfig(rawBytes, { dto: nextDto });
+  config.withDTO = (nextDto) => makeConfig(rawBytes, { dto: nextDto, hardwareTested });
   return config;
 }
 
@@ -165,9 +167,11 @@ describe("TrackerWorkflow", () => {
   it("writes a validated draft and replaces the baseline only after acknowledgement", async () => {
     const raw = bytes("00=FW\r\n31=end\r\n");
     const parsedConfig = makeConfig(raw);
+    const events = [];
     const workflow = new TrackerWorkflow({
       serialSession: new FakeSerialSession({ raw }),
       parseConfig: () => parsedConfig,
+      onEvent: (event) => events.push(event),
     });
 
     await workflow.connect();
@@ -181,6 +185,24 @@ describe("TrackerWorkflow", () => {
     expect(workflow.draftDirty).toBe(false);
     expect(workflow.serialSession.writeCalls).toHaveLength(1);
     expect(workflow.serialSession.readCalls).toHaveLength(2);
+    expect(events.filter((event) => event.type === "raw-config-read").map((event) => event.purpose)).toEqual(["read", "verification"]);
+  });
+
+  it("blocks writes to an unverified firmware before any serial upload", async () => {
+    const raw = bytes("00=AVRT5 20991231\r\n31=end\r\n");
+    const serialSession = new FakeSerialSession({ raw });
+    const workflow = new TrackerWorkflow({
+      serialSession,
+      parseConfig: () => makeConfig(raw, { hardwareTested: false }),
+    });
+
+    await workflow.connect();
+    await workflow.readTrackerConfig();
+    expect(workflow.canWriteFirmware).toBe(false);
+    await expect(workflow.writeTrackerConfig()).rejects.toBeInstanceOf(TrackerWorkflowUnsupportedFirmwareError);
+    expect(serialSession.writeCalls).toHaveLength(0);
+    expect(serialSession.readCalls).toHaveLength(1);
+    expect(workflow.state).toBe(TrackerWorkflowState.LOADED);
   });
 
   it("passes the detected legacy protocol variant through to configuration writes", async () => {

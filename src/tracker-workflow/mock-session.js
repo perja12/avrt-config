@@ -41,6 +41,8 @@ export class MockTrackerSerialSession {
       this.rawConfig = new TextEncoder().encode(MOCK_CONFIG_TEXT
         .replace("09=AP510 mock status", "09=")
         .replace("10=AP510 mock tracker", "10="));
+    } else if (scenario === "unsupported") {
+      this.rawConfig = new TextEncoder().encode(MOCK_CONFIG_TEXT.replace("00=AVRT5 20210404", "00=AVRT5 20991231"));
     }
   }
 

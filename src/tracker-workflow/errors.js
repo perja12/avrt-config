@@ -11,3 +11,5 @@ export class TrackerWorkflowBusyError extends TrackerWorkflowError {}
 export class TrackerWorkflowStateError extends TrackerWorkflowError {}
 
 export class TrackerWorkflowVerificationError extends TrackerWorkflowError {}
+
+export class TrackerWorkflowUnsupportedFirmwareError extends TrackerWorkflowError {}

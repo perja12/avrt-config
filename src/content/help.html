@@ -44,6 +44,18 @@
   </ol>
 </section>
 
+<section id="troubleshooting">
+  <h2>Troubleshooting</h2>
+  <p>If a read or write fails, keep the page open so the session trace remains available. Note the error message and what you were doing when it appeared.</p>
+  <ol>
+    <li>Open <i>Configure → Diagnostics</i> and click <i>Download trace (.json)</i>. The trace includes serial bytes and any complete configuration capture, even if parsing failed.</li>
+    <li>Expand <i>Activity</i> and copy the relevant messages. Include the tracker firmware version if it is shown, your browser, and the steps that led to the problem.</li>
+    <li>Review the trace before sharing: it may contain callsigns, positions, and other tracker settings. Then submit the details and trace in <a href="https://github.com/perja12/avrt-config/issues/new" target="_blank" rel="noopener noreferrer">a new issue report</a>.</li>
+  </ol>
+  <p>The trace stays in memory during the current page session and is not saved in browser storage. Download it before reloading or closing the page.</p>
+  <p>Writing is supported for firmware <strong>AVRT5 20210404</strong> and <strong>AVRT5 20200605</strong>. Other versions may be read when their configuration format is recognized, but writing is blocked. If yours is blocked, report its version with the trace and Activity details.</p>
+</section>
+
 <section id="field-documentation">
   <h2>Per-field documentation</h2>
   <p>The sections below describe the various fields that can be configured.</p>
