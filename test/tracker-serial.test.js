@@ -151,6 +151,44 @@ describe("TrackerSerialSession", () => {
     expect(events.some((event) => event.type === "status" && event.phase === "capture-complete")).toBe(true);
   });
 
+  it.each([
+    ["\r", "\nSETUP\r\n"],
+    ["\r\n", "SETUP\r\n"],
+    ["noise\r\nS", "ETUP\r\n"],
+    ["\r\nSE", "TUP\r\n"],
+    ["\r\nSET", "UP\r\n"],
+    ["\r\nSETU", "P\r\n"],
+    ["\r", "\n", "S", "E", "T", "U", "P"],
+  ])("recognizes a new SETUP response split into chunks: %j", async (...chunks) => {
+    const transport = new FakeTransport([...chunks, finalResponse(), "", ""]);
+    const session = new TrackerSerialSession({ transport, clock: noDelayClock });
+    expect(text(await session.readConfig({ setupAttempts: 1 }))).toBe(text(finalResponse()));
+    expect(session.protocolVariant).toBe(ProtocolVariant.NEW);
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "\r\nDISP\r\n"]);
+  });
+
+  it("recognizes a legacy SETUP response split into single bytes", async () => {
+    const transport = new FakeTransport(["", ..."SETUP", finalResponse(), "", ""]);
+    const session = new TrackerSerialSession({ transport, clock: noDelayClock });
+    await session.readConfig({ setupAttempts: 2 });
+    expect(session.protocolVariant).toBe(ProtocolVariant.LEGACY);
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "@SETUP", "@DISP"]);
+  });
+
+  it("discards a partial response when its probe times out", async () => {
+    const transport = new FakeTransport(["\r\nSE", "", "TUP", ""]);
+    const session = new TrackerSerialSession({ transport, clock: noDelayClock });
+    await expect(session.readConfig({ setupAttempts: 3 })).rejects.toBeInstanceOf(TrackerSerialNoResponseError);
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "@SETUP", "\r\nSETUP\r\n"]);
+  });
+
+  it("bounds continuation reads even when noise repeatedly ends in a partial marker", async () => {
+    const transport = new FakeTransport(Array(100).fill("noiseS"));
+    const session = new TrackerSerialSession({ transport, clock: noDelayClock });
+    await expect(session.readConfig({ setupAttempts: 1 })).rejects.toBeInstanceOf(TrackerSerialNoResponseError);
+    expect(transport.reads).toHaveLength(68);
+  });
+
   it("alternates setup probes and reads legacy configuration", async () => {
     const transport = new FakeTransport(["", "SETUP", "00=AVRT5 20141008\r\n01=N0CALL9\r\n29=legacy\r\n", "", ""]);
     const session = new TrackerSerialSession({ transport, clock: noDelayClock });

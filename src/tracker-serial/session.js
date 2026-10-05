@@ -18,6 +18,11 @@ const DEFAULT_OPTIONS = Object.freeze({
   acknowledgementReads: 12,
 });
 
+const SETUP_RESPONSE_PREFIXES = ["\r\nSETUP", "SETUP"].flatMap((marker) =>
+  Array.from({ length: marker.length - 1 }, (_, index) => marker.slice(0, index + 1)),
+);
+const MAX_SETUP_RESPONSE_CHUNKS = 32;
+
 const LEGACY_NUL_TERMINATED_KEYS = new Set(["09", "10", "15"]);
 
 export class TrackerSerialSession {
@@ -122,7 +127,6 @@ export class TrackerSerialSession {
   }
 
   async #probeSetup(settings) {
-    const received = [];
     const variants = [ProtocolVariant.NEW, ProtocolVariant.LEGACY];
 
     for (let attempt = settings.offset + 1; attempt <= settings.setupAttempts; attempt += 1) {
@@ -133,16 +137,28 @@ export class TrackerSerialSession {
         detail: { attempt, maxAttempts: settings.setupAttempts, variant },
       });
       await this.#write(SETUP_COMMANDS[variant], COMMAND_LABELS.setup[variant], settings.signal);
-      const chunk = await this.#read({ timeoutMs: settings.setupReadTimeoutMs, signal: settings.signal });
-      if (chunk?.length) received.push(chunk);
-
-      // Only inspect the response returned for this probe. Older probe echoes
-      // can remain in the transport's receive window and must not determine
-      // the variant for a later probe.
-      const detected = detectSetupVariant(chunk);
+      // Continue reading a partial marker within this probe's time window.
+      // Reset the buffer before the next probe so old echoes cannot select it.
+      let response = new Uint8Array();
+      let detected = null;
+      const deadline = performance.now() + settings.setupReadTimeoutMs;
+      for (let chunks = 0; chunks < MAX_SETUP_RESPONSE_CHUNKS; chunks += 1) {
+        const timeoutMs = chunks === 0 ? settings.setupReadTimeoutMs : Math.max(0, Math.ceil(deadline - performance.now()));
+        if (chunks > 0 && timeoutMs === 0) break;
+        const chunk = await this.#read({ timeoutMs, signal: settings.signal });
+        if (!chunk?.length) break;
+        const window = concatBytes([response, chunk]);
+        detected = detectSetupVariant(window);
+        if (detected) break;
+        // Six bytes retain every possible incomplete SETUP marker, including
+        // its CRLF prefix, regardless of how much unrelated data arrives.
+        response = window.slice(-6);
+        const suffix = String.fromCharCode(...response);
+        if (!SETUP_RESPONSE_PREFIXES.some((prefix) => suffix.endsWith(prefix))) break;
+      }
       if (detected) {
         this.#emitStatus("setup-detected", `Setup response detected (${detected})`, { cancellable: true, detail: { attempt, variant: detected } });
-        return { variant: detected, response: concatBytes(received), attempt };
+        return { variant: detected, attempt };
       }
     }
 
