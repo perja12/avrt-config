@@ -17,7 +17,8 @@ export function createSessionTrace({ build, mode, now = () => Date.now() } = {})
         };
         if (serial.label !== undefined) entry.label = serial.label;
         if (serial.timeoutMs !== undefined) entry.timeout_ms = serial.timeoutMs;
-      } else if (serial.type === "status" || serial.type === "progress") {
+        if (serial.elapsedMs !== undefined) entry.elapsed_ms = serial.elapsedMs;
+      } else if (serial.type === "status" || serial.type === "progress" || serial.type === "transport") {
         entry = { type: `serial-${serial.type}`, phase: serial.phase };
         if (serial.message !== undefined) entry.message = serial.message;
         if (serial.detail !== undefined) entry.detail = structuredClone(serial.detail);
@@ -33,6 +34,7 @@ export function createSessionTrace({ build, mode, now = () => Date.now() } = {})
       };
     } else if (["operation-started", "operation-completed", "operation-failed"].includes(source.type)) {
       entry = { type: source.type, operation: source.operation };
+      if (source.cancellable !== undefined) entry.cancellable = source.cancellable;
       if (source.error) entry.error = { name: source.error.name, message: source.error.message };
     } else if (source.type === "config-loaded" || source.type === "config-written") {
       entry = { type: source.type, diagnostics: source.config.toDebugJSON() };
