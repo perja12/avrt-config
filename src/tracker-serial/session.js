@@ -136,6 +136,9 @@ export class TrackerSerialSession {
         cancellable: true,
         detail: { attempt, maxAttempts: settings.setupAttempts, variant },
       });
+      // Discard input observed before this probe, without waiting or draining
+      // responses that arrive while its write is in flight.
+      this.transport.discardQueuedInput?.();
       await this.#write(SETUP_COMMANDS[variant], COMMAND_LABELS.setup[variant], settings.signal);
       // Continue reading a partial marker within this probe's time window.
       // Reset the buffer before the next probe so old echoes cannot select it.
@@ -212,8 +215,9 @@ export class TrackerSerialSession {
   async #read(options) {
     this.#throwIfAborted(options.signal);
     const startedAt = performance.now();
-    const chunk = await this.transport.read(options);
-    this.#emit("rx", { bytes: chunk ?? new Uint8Array(), timeoutMs: options.timeoutMs, elapsedMs: Math.round(performance.now() - startedAt) });
+    let receiveMetadata = {};
+    const chunk = await this.transport.read({ ...options, onReceive: (metadata) => { receiveMetadata = metadata; } });
+    this.#emit("rx", { bytes: chunk ?? new Uint8Array(), timeoutMs: options.timeoutMs, elapsedMs: Math.round(performance.now() - startedAt), ...receiveMetadata });
     return chunk ?? new Uint8Array();
   }
 
