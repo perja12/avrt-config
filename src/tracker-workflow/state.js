@@ -7,4 +7,5 @@ export const TrackerWorkflowState = Object.freeze({
   LOADED: "loaded",
   DISCONNECTING: "disconnecting",
   ERROR: "error",
+  CONNECTION_LOST: "connection-lost",
 });

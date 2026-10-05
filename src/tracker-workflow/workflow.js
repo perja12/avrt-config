@@ -16,6 +16,18 @@ export class TrackerWorkflow {
     this.protocolVariant = null;
   }
 
+  handleSerialEvent(event) {
+    const connectionEnded = event.type === "transport" && (
+      (event.phase === "receive-loop-ended" && event.detail?.reason !== "close-requested") ||
+      event.phase === "write-abort-requested"
+    );
+    if (!connectionEnded || [TrackerWorkflowState.DISCONNECTED, TrackerWorkflowState.DISCONNECTING, TrackerWorkflowState.CONNECTION_LOST].includes(this.state)) return;
+    this.lastError = new Error("Tracker connection lost. Click Disconnect, then Connect to reopen the serial connection.");
+    this.currentOperation?.controller.abort(this.lastError);
+    this.#setState(TrackerWorkflowState.CONNECTION_LOST);
+    this.#emitStatus("connection-lost", this.lastError.message);
+  }
+
   get canCancel() {
     return Boolean(this.currentOperation?.cancellable);
   }
@@ -55,6 +67,7 @@ export class TrackerWorkflow {
     return this.#runOperation("connect", { cancellable: false }, async () => {
       this.#emitStatus("opening", "Opening tracker connection");
       await this.serialSession.open?.(options);
+      if (this.state === TrackerWorkflowState.CONNECTION_LOST) throw this.lastError;
       this.#setState(TrackerWorkflowState.CONNECTED);
       this.#emitStatus("connected", "Tracker connection opened");
     });
@@ -81,6 +94,7 @@ export class TrackerWorkflow {
     return this.#runOperation("read-config", { cancellable: true, signal }, async (operationSignal) => {
       this.#emitStatus("reading", "Reading tracker configuration");
       const rawBytes = await this.serialSession.readConfig({ signal: operationSignal });
+      if (this.state === TrackerWorkflowState.CONNECTION_LOST) throw this.lastError;
       this.protocolVariant = this.serialSession.protocolVariant ?? this.serialSession.getProtocolVariant?.() ?? null;
       this.#emit({ type: "raw-config-read", rawBytes, purpose: "read", protocolVariant: this.protocolVariant });
 
@@ -120,8 +134,10 @@ export class TrackerWorkflow {
       const writeOptions = { signal: operationSignal };
       if (this.protocolVariant) writeOptions.variant = this.protocolVariant;
       const acknowledgement = await this.serialSession.writeConfig(candidate.rawConfig.records, writeOptions);
+      if (this.state === TrackerWorkflowState.CONNECTION_LOST) throw this.lastError;
       this.#emitStatus("verifying", "Reading back tracker configuration for verification");
       const rawBytes = await this.serialSession.readConfig({ signal: operationSignal });
+      if (this.state === TrackerWorkflowState.CONNECTION_LOST) throw this.lastError;
       this.#emit({ type: "raw-config-read", rawBytes, purpose: "verification", protocolVariant: this.protocolVariant });
       const verified = this.parseConfig(rawBytes);
       verified.validateSerialCapture();
@@ -176,12 +192,14 @@ export class TrackerWorkflow {
 
     try {
       const result = await body(controller.signal);
-      this.lastError = null;
+      if (this.state !== TrackerWorkflowState.CONNECTION_LOST) this.lastError = null;
       this.#emit({ type: "operation-completed", operation: name });
       return result;
     } catch (error) {
-      this.lastError = error;
-      if (this.state !== TrackerWorkflowState.DISCONNECTED) this.#setState(TrackerWorkflowState.ERROR);
+      if (this.state !== TrackerWorkflowState.CONNECTION_LOST) {
+        this.lastError = error;
+        if (this.state !== TrackerWorkflowState.DISCONNECTED) this.#setState(TrackerWorkflowState.ERROR);
+      }
       this.#emit({ type: "operation-failed", operation: name, error });
       throw error;
     } finally {

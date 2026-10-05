@@ -71,6 +71,51 @@ class FakeSerialSession {
 }
 
 describe("TrackerWorkflow", () => {
+  it("marks an idle loaded connection lost and preserves the draft until disconnect", async () => {
+    const events = [];
+    const session = new FakeSerialSession();
+    const workflow = new TrackerWorkflow({ serialSession: session, parseConfig: makeConfig, onEvent: (event) => events.push(event) });
+    await workflow.connect();
+    await workflow.readTrackerConfig();
+    const draft = workflow.draft;
+    workflow.handleSerialEvent({ type: "transport", phase: "receive-loop-ended", detail: { reason: "read-error" } });
+    expect(workflow.state).toBe(TrackerWorkflowState.CONNECTION_LOST);
+    expect(workflow.draft).toBe(draft);
+    expect(events.at(-1)).toMatchObject({ type: "status", phase: "connection-lost" });
+    await expect(workflow.readTrackerConfig()).rejects.toBeInstanceOf(TrackerWorkflowStateError);
+    await expect(workflow.writeTrackerConfig()).rejects.toBeInstanceOf(TrackerWorkflowStateError);
+    await workflow.disconnect();
+    await workflow.connect();
+    expect(workflow.state).toBe(TrackerWorkflowState.CONNECTED);
+  });
+
+  it("does not restore loaded state if connection loss races with a completed capture", async () => {
+    const session = new FakeSerialSession();
+    const workflow = new TrackerWorkflow({ serialSession: session, parseConfig: makeConfig });
+    await workflow.connect();
+    session.pendingRead = async () => {
+      workflow.handleSerialEvent({ type: "transport", phase: "receive-loop-ended", detail: { reason: "stream-ended" } });
+      return session.raw;
+    };
+    await expect(workflow.readTrackerConfig()).rejects.toThrow("Tracker connection lost");
+    expect(workflow.state).toBe(TrackerWorkflowState.CONNECTION_LOST);
+    expect(workflow.originalConfig).toBeNull();
+    expect(workflow.currentOperation).toBeNull();
+  });
+
+  it("does not mark recoverable receive errors or intentional closure as connection loss", async () => {
+    const workflow = new TrackerWorkflow({ serialSession: new FakeSerialSession() });
+    await workflow.connect();
+    for (const event of [
+      { type: "transport", phase: "receive-error", detail: { recoverable: true } },
+      { type: "transport", phase: "receive-recovered" },
+      { type: "transport", phase: "receive-loop-ended", detail: { reason: "close-requested" } },
+    ]) workflow.handleSerialEvent(event);
+    expect(workflow.state).toBe(TrackerWorkflowState.CONNECTED);
+    await workflow.disconnect();
+    expect(workflow.state).toBe(TrackerWorkflowState.DISCONNECTED);
+  });
+
   it("connects and disconnects through the injected serial session", async () => {
     const events = [];
     const serialSession = new FakeSerialSession();
