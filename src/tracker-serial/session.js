@@ -1,3 +1,4 @@
+import { ConfigFormatError, parseAP510Config } from "../tracker-config/core.js";
 import { concatBytes, trimAsciiWhitespace } from "./bytes.js";
 import { COMMAND_LABELS, DISPLAY_COMMANDS, ProtocolVariant, SETUP_COMMANDS } from "./commands.js";
 import {
@@ -72,9 +73,20 @@ export class TrackerSerialSession {
         continue;
       }
 
-      const capture = extractConfigurationCapture(response);
-      if (!capture || capture.length === 0) {
-        throw new TrackerSerialIncompleteResponseError("tracker response did not contain a configuration capture", { response });
+      let capture;
+      try {
+        const profile = parseAP510Config(response).profile;
+        capture = extractConfigurationCapture(response, { terminalKeys: [...profile.terminalCaptureKeys] });
+        if (!capture?.length) throw new ConfigFormatError("tracker response did not contain a configuration capture");
+        parseAP510Config(capture).validateSerialCapture();
+      } catch (error) {
+        if (!(error instanceof ConfigFormatError)) throw error;
+        this.#emit("status", {
+          phase: "capture-incomplete",
+          message: `Tracker configuration is incomplete: ${error.message}`,
+          detail: { bytesReceived: response.length, variant: setup.variant },
+        });
+        throw new TrackerSerialIncompleteResponseError(`Tracker configuration is incomplete: ${error.message}`, { response, cause: error });
       }
       this.#protocolVariant = setup.variant;
       this.#emit("status", {

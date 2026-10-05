@@ -84,6 +84,9 @@ export class AP510Config {
     }
 
     const keys = this.records.map((record) => record.key);
+    if (keys[0] !== "00" || !this.firmware()) {
+      throw new ConfigFormatError("response must start with a nonempty firmware record 00");
+    }
     const terminalCaptureKeys = this.profile.terminalCaptureKeys ?? new Set();
     if (terminalCaptureKeys.size > 0 && !terminalCaptureKeys.has(keys.at(-1))) {
       throw new ConfigFormatError(
@@ -91,7 +94,13 @@ export class AP510Config {
       );
     }
 
-    const requiredCaptureKeys = this.profile.requiredCaptureKeys ?? new Set();
+    const terminal = this.records.at(-1);
+    const terminalLength = this.profile.terminalCaptureLengths?.get(terminal?.key);
+    if (terminalLength !== undefined && terminal.value.length !== terminalLength) {
+      throw new ConfigFormatError(`terminal record ${terminal.key} has ${terminal.value.length} bytes, expected ${terminalLength}`);
+    }
+
+    const requiredCaptureKeys = new Set(["00", "01", ...(this.profile.requiredCaptureKeys ?? [])]);
     const missing = [...requiredCaptureKeys].filter((key) => !keys.includes(key)).sort();
     if (missing.length > 0) {
       throw new ConfigFormatError(`response is missing required keys: ${missing.join(", ")}`);

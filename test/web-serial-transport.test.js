@@ -134,7 +134,7 @@ describe("WebSerialTransport", () => {
       write(chunk) {
         port.writes.push(chunk);
         if (text(chunk) === "\r\nSETUP\r\n") controller.enqueue(bytes("SETUP"));
-        if (text(chunk) === "@DISP") controller.enqueue(bytes("00= AVRT5 20210404\r\n01=N0CALL9\r\n31=001008000\r\n"));
+        if (text(chunk) === "@DISP") controller.enqueue(bytes("00= AVRT5 20141008\r\n01=N0CALL9\r\n29=legacy\r\n"));
       },
     });
     const transport = new WebSerialTransport({ port, onEvent: emit });
