@@ -1,5 +1,8 @@
 import { TrackerSerialTimeoutError } from "./errors.js";
 
+const RECOVERABLE_RECEIVE_ERRORS = new Set(["FramingError", "ParityError", "BufferOverrunError", "BreakError"]);
+const MAX_CONSECUTIVE_RECEIVE_RECOVERIES = 3;
+
 export const DEBUGPROBE_USB_IDS = Object.freeze({ usbVendorId: 0x2e8a, usbProductId: 0x000c });
 
 export class WebSerialTransport {
@@ -176,30 +179,56 @@ export class WebSerialTransport {
       this.#diagnostic("receive-loop-not-started", { readable: Boolean(this.port?.readable), alreadyRunning: Boolean(this.readLoopPromise) });
       return;
     }
-    this.reader = this.port.readable.getReader();
     this.#diagnostic("receive-loop-started");
     this.readLoopPromise = this.#readLoop();
   }
 
   async #readLoop() {
     let reason = "close-requested";
+    let consecutiveRecoveries = 0;
     try {
       while (!this.closed) {
-        const { value, done } = await this.reader.read();
-        if (done) {
-          reason = this.closed ? "close-requested" : "stream-ended";
+        const stream = this.port?.readable;
+        if (!stream) {
+          reason = "stream-ended";
           break;
         }
-        if (value?.length) this.#pushReadChunk(value);
+        let recover = false;
+        try {
+          this.reader = stream.getReader();
+          while (!this.closed) {
+            const { value, done } = await this.reader.read();
+            if (done) {
+              reason = this.closed ? "close-requested" : "stream-ended";
+              break;
+            }
+            if (value?.length) {
+              consecutiveRecoveries = 0;
+              this.#pushReadChunk(value);
+            }
+          }
+        } catch (error) {
+          const replacement = this.port?.readable;
+          recover = !this.closed && RECOVERABLE_RECEIVE_ERRORS.has(error?.name) &&
+            Boolean(replacement) && replacement !== stream &&
+            consecutiveRecoveries < MAX_CONSECUTIVE_RECEIVE_RECOVERIES;
+          this.#diagnostic("receive-error", {
+            error: describeError(error), readable: Boolean(replacement), closeRequested: this.closed, recoverable: recover,
+          });
+          if (!recover) throw error;
+          consecutiveRecoveries += 1;
+        } finally {
+          this.reader?.releaseLock();
+          this.reader = null;
+        }
+        if (!recover || this.closed) break;
+        this.#diagnostic("receive-recovered", { consecutiveRecoveries });
       }
     } catch (error) {
       reason = "read-error";
       this.lastReadError = error;
-      this.#diagnostic("receive-error", { error: describeError(error), readable: Boolean(this.port?.readable), closeRequested: this.closed });
     } finally {
       this.#diagnostic("receive-loop-ended", { reason, readable: Boolean(this.port?.readable), queuedChunks: this.readQueue.length, waitingReads: this.waitingReads.length });
-      this.reader?.releaseLock();
-      this.reader = null;
       this.closed = true;
       this.#rejectWrites(this.#connectionError());
       for (const waiter of this.waitingReads.splice(0)) waiter.reject(this.#connectionError());

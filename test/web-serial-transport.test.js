@@ -141,6 +141,84 @@ describe("WebSerialTransport", () => {
     ]));
   });
 
+  it.each(["FramingError", "ParityError", "BufferOverrunError", "BreakError"])("recovers a pending read after %s using the replacement stream", async (name) => {
+    const events = [];
+    const port = new FakePort();
+    let fail;
+    let replacementController;
+    const replacement = new ReadableStream({ start(controller) { replacementController = controller; } });
+    port.readable = new ReadableStream({ start(controller) { fail = controller; } });
+    const transport = new WebSerialTransport({ port, onEvent: (event) => events.push(event) });
+    await transport.open();
+    const reading = transport.read({ timeoutMs: 250 });
+    port.readable = replacement;
+    fail.error(new DOMException("UART error", name));
+    replacementController.enqueue(bytes("SETUP"));
+    expect(text(await reading)).toBe("SETUP");
+    expect(transport.closed).toBe(false);
+    expect(transport.lastReadError).toBeNull();
+    expect(events.some((event) => event.phase === "receive-recovered")).toBe(true);
+    await transport.write(bytes("DISP"));
+    await transport.close();
+    expect(replacement.locked).toBe(false);
+  });
+
+  it("does not recover fatal device loss even if a stream remains available", async () => {
+    const port = new FakePort();
+    let controller;
+    port.readable = new ReadableStream({ start(value) { controller = value; } });
+    const transport = new WebSerialTransport({ port });
+    await transport.open();
+    const reading = transport.read({ timeoutMs: 250 });
+    const error = new DOMException("The device has been lost.", "NetworkError");
+    const rejection = expect(reading).rejects.toBe(error);
+    port.readable = new ReadableStream();
+    controller.error(error);
+    await rejection;
+    expect(transport.closed).toBe(true);
+    await transport.close();
+  });
+
+  it("limits consecutive recoveries without received data", async () => {
+    const events = [];
+    const port = new FakePort();
+    let currentController;
+    const newStream = () => new ReadableStream({ start(controller) { currentController = controller; } });
+    port.readable = newStream();
+    const transport = new WebSerialTransport({ port, onEvent: (event) => events.push(event) });
+    await transport.open();
+    const reading = transport.read({ timeoutMs: 250 });
+    const rejection = expect(reading).rejects.toThrow("UART error");
+    for (let index = 0; index < 4; index += 1) {
+      const previousController = currentController;
+      port.readable = newStream();
+      previousController.error(new DOMException("UART error", "FramingError"));
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    await rejection;
+    expect(events.filter((event) => event.phase === "receive-recovered")).toHaveLength(3);
+    await transport.close();
+  });
+
+  it("allows cancellation and disconnect after receive recovery", async () => {
+    const port = new FakePort();
+    let controller;
+    port.readable = new ReadableStream({ start(value) { controller = value; } });
+    const transport = new WebSerialTransport({ port });
+    await transport.open();
+    port.readable = new ReadableStream();
+    controller.error(new DOMException("UART error", "FramingError"));
+    await Promise.resolve();
+    const abort = new AbortController();
+    const reading = transport.read({ timeoutMs: 250, signal: abort.signal });
+    const rejection = expect(reading).rejects.toThrow("Cancelled");
+    abort.abort(new Error("Cancelled"));
+    await rejection;
+    await transport.close();
+    expect(transport.port).toBeNull();
+  });
+
   it("distinguishes unexpected stream endings from an intentional close", async () => {
     for (const unexpected of [true, false]) {
       const events = [];
