@@ -352,7 +352,7 @@ describe("createBrowserTrackerWorkflow", () => {
 
     capturedSessionOptions.onEvent({ type: "status", phase: "probing" });
 
-    expect(capturedSessionOptions.transport.options).toEqual({ serial: "serial-api", port: "port" });
+    expect(capturedSessionOptions.transport.options).toEqual({ serial: "serial-api", port: "port", onEvent: expect.any(Function) });
     expect(workflow.options.serialSession).toBeInstanceOf(StubSession);
     expect(events).toEqual([{ type: "serial", event: { type: "status", phase: "probing" } }]);
   });

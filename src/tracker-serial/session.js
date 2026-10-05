@@ -189,14 +189,15 @@ export class TrackerSerialSession {
 
   async #write(bytes, label, signal) {
     this.#throwIfAborted(signal);
-    await this.transport.write(bytes);
+    await this.transport.write(bytes, { signal });
     this.#emit("tx", { bytes, label });
   }
 
   async #read(options) {
     this.#throwIfAborted(options.signal);
+    const startedAt = performance.now();
     const chunk = await this.transport.read(options);
-    this.#emit("rx", { bytes: chunk ?? new Uint8Array(), timeoutMs: options.timeoutMs });
+    this.#emit("rx", { bytes: chunk ?? new Uint8Array(), timeoutMs: options.timeoutMs, elapsedMs: Math.round(performance.now() - startedAt) });
     return chunk ?? new Uint8Array();
   }
 

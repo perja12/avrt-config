@@ -15,7 +15,7 @@ export function createBrowserTrackerWorkflow({
   const serialSession = mockTracker
     ? new MockTrackerSerialSession({ onEvent: emitSerial, scenario: mockTracker === true ? "normal" : mockTracker })
     : new SessionClass({
-        transport: new TransportClass({ serial, port }),
+        transport: new TransportClass({ serial, port, onEvent: emitSerial }),
         onEvent: emitSerial,
       });
 
