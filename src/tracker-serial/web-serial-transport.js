@@ -13,6 +13,7 @@ export class WebSerialTransport {
     this.reader = null;
     this.readLoopPromise = null;
     this.readQueue = [];
+    this.receiveSequence = 0;
     this.waitingReads = [];
     this.pendingWrites = new Set();
     this.closed = false;
@@ -138,17 +139,30 @@ export class WebSerialTransport {
     }
   }
 
-  async read({ timeoutMs, signal } = {}) {
+  discardQueuedInput() {
+    const discarded = this.readQueue.splice(0);
+    if (discarded.length) {
+      this.#diagnostic("queued-input-discarded", {
+        chunks: discarded.length,
+        byteLength: discarded.reduce((total, packet) => total + packet.bytes.length, 0),
+        receiveSequences: discarded.map((packet) => packet.sequence),
+        reason: "before-setup-probe",
+      });
+    }
+  }
+
+  async read({ timeoutMs, signal, onReceive } = {}) {
     if (signal?.aborted) throw signal.reason ?? new Error("Operation cancelled");
     if (this.closed) {
       this.#diagnostic("read-unavailable", { timeoutMs, error: this.lastReadError ? describeError(this.lastReadError) : null });
       throw this.#connectionError();
     }
-    if (this.readQueue.length > 0) return this.readQueue.shift();
+    if (this.readQueue.length > 0) return this.#consumeChunk(this.readQueue.shift(), true, onReceive);
 
     return new Promise((resolve, reject) => {
       let timeout = null;
       const waiter = {
+        resolveChunk: (packet) => waiter.resolve(this.#consumeChunk(packet, false, onReceive)),
         resolve: (value) => {
           cleanup();
           resolve(value);
@@ -247,11 +261,29 @@ export class WebSerialTransport {
     this.onEvent({ type: "transport", phase, detail });
   }
 
-  #pushReadChunk(chunk) {
-    const waiter = this.waitingReads.shift();
-    if (waiter) waiter.resolve(chunk);
-    else this.readQueue.push(chunk);
+  #consumeChunk(packet, queued, onReceive) {
+    onReceive?.({
+      receivedAt: packet.receivedAt,
+      receiveSequence: packet.sequence,
+      queued,
+      queueAgeMs: Math.max(0, Math.round(performance.now() - packet.arrivedAt)),
+    });
+    return packet.bytes;
   }
+
+  #pushReadChunk(chunk) {
+    const packet = {
+      bytes: chunk,
+      receivedAt: new Date().toISOString(),
+      arrivedAt: performance.now(),
+      sequence: ++this.receiveSequence,
+    };
+    const waiter = this.waitingReads.shift();
+    this.onEvent({ type: "rx-arrived", bytes: chunk, receivedAt: packet.receivedAt, receiveSequence: packet.sequence, queued: !waiter });
+    if (waiter) waiter.resolveChunk(packet);
+    else this.readQueue.push(packet);
+  }
+
 }
 
 function describeError(error) {

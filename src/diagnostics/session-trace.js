@@ -9,7 +9,7 @@ export function createSessionTrace({ build, mode, now = () => Date.now() } = {})
 
     if (source.type === "serial") {
       const serial = source.event;
-      if (serial.type === "tx" || serial.type === "rx") {
+      if (serial.type === "tx" || serial.type === "rx" || serial.type === "rx-arrived") {
         entry = {
           type: serial.type,
           bytes_base64: bytesToBase64(serial.bytes),
@@ -18,6 +18,10 @@ export function createSessionTrace({ build, mode, now = () => Date.now() } = {})
         if (serial.label !== undefined) entry.label = serial.label;
         if (serial.timeoutMs !== undefined) entry.timeout_ms = serial.timeoutMs;
         if (serial.elapsedMs !== undefined) entry.elapsed_ms = serial.elapsedMs;
+        if (serial.receivedAt !== undefined) entry.received_at = serial.receivedAt;
+        if (serial.receiveSequence !== undefined) entry.receive_sequence = serial.receiveSequence;
+        if (serial.queued !== undefined) entry.queued = serial.queued;
+        if (serial.queueAgeMs !== undefined) entry.queue_age_ms = serial.queueAgeMs;
       } else if (serial.type === "status" || serial.type === "progress" || serial.type === "transport") {
         entry = { type: `serial-${serial.type}`, phase: serial.phase };
         if (serial.message !== undefined) entry.message = serial.message;

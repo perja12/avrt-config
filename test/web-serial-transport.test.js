@@ -98,6 +98,73 @@ describe("WebSerialTransport", () => {
     expect(workflow.state).toBe("disconnected");
   });
 
+  it("records idle byte arrival before consumption and correlates its timestamps", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "performance"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      const trace = createSessionTrace();
+      const emit = (event) => trace.record({ type: "serial", event });
+      const port = new FakePort({ reads: [{ value: bytes("startup"), done: false }] });
+      const transport = new WebSerialTransport({ port, onEvent: emit });
+      const session = new TrackerSerialSession({ transport, onEvent: emit });
+      await session.open();
+      expect(trace.snapshot().events.find((event) => event.type === "rx-arrived")).toMatchObject({
+        received_at: "2026-10-05T12:00:00.000Z", receive_sequence: 1, queued: true, bytes_base64: "c3RhcnR1cA==",
+      });
+      expect(trace.snapshot().events.some((event) => event.type === "rx")).toBe(false);
+      vi.advanceTimersByTime(1000);
+      let metadata;
+      expect(text(await transport.read({ onReceive: (value) => { metadata = value; } }))).toBe("startup");
+      emit({ type: "rx", bytes: bytes("startup"), ...metadata });
+      const consumed = trace.snapshot().events.find((event) => event.type === "rx");
+      expect(consumed).toMatchObject({ received_at: "2026-10-05T12:00:00.000Z", at: "2026-10-05T12:00:01.000Z", receive_sequence: 1, queued: true, queue_age_ms: 1000 });
+      await session.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("discards stale setup markers but keeps fresh responses arriving during the write", async () => {
+    const trace = createSessionTrace();
+    const emit = (event) => trace.record({ type: "serial", event });
+    const port = new FakePort();
+    let controller;
+    port.readable = new ReadableStream({ start(value) { controller = value; } });
+    port.writable = new WritableStream({
+      write(chunk) {
+        port.writes.push(chunk);
+        if (text(chunk) === "\r\nSETUP\r\n") controller.enqueue(bytes("SETUP"));
+        if (text(chunk) === "@DISP") controller.enqueue(bytes("00= AVRT5 20210404\r\n01=N0CALL9\r\n31=001008000\r\n"));
+      },
+    });
+    const transport = new WebSerialTransport({ port, onEvent: emit });
+    const session = new TrackerSerialSession({ transport, onEvent: emit });
+    await session.open();
+    controller.enqueue(bytes("\r\nSETUP\r\n"));
+    await Promise.resolve();
+    expect(transport.readQueue).toHaveLength(1);
+    const capture = await session.readConfig({ setupAttempts: 1, readTimeoutMs: 1 });
+    expect(text(capture)).toContain("01=N0CALL9");
+    expect(session.protocolVariant).toBe("legacy");
+    expect(port.writes.map(text)).toEqual(["\r\nSETUP\r\n", "@DISP"]);
+    const events = trace.snapshot().events;
+    expect(events.find((event) => event.phase === "queued-input-discarded").detail).toMatchObject({ byteLength: 9, receiveSequences: [1] });
+    expect(events.filter((event) => event.type === "rx" && event.byte_length).map((event) => event.receive_sequence)).toEqual([2, 3]);
+    expect(events.filter((event) => event.type === "rx-arrived")).toHaveLength(3);
+    await session.close();
+  });
+
+  it("discards stale partial markers before they can prefix a fresh legacy response", async () => {
+    const port = new FakePort({ reads: [{ value: bytes("\r\n"), done: false }] });
+    const transport = new WebSerialTransport({ port });
+    await transport.open();
+    transport.discardQueuedInput();
+    port.reader.resolvePending({ value: bytes("SETUP"), done: false });
+    await Promise.resolve();
+    expect(text(await transport.read({ timeoutMs: 1 }))).toBe("SETUP");
+    await transport.close();
+  });
+
   it("opens AP510 serial defaults and asserts DTR for Debugprobe only", async () => {
     const port = new FakePort({ info: DEBUGPROBE_USB_IDS });
     const transport = new WebSerialTransport({ port });
