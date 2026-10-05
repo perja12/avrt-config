@@ -23,6 +23,17 @@ describe("AP510 negative capture corpus", () => {
     expect(() => config.validateSerialCapture()).toThrow("expected terminal key 31");
   });
 
+  it.each(["AVRT5 20141008", "AVRT5 20991231"])("requires the callsign record even for unverified firmware %s", (firmware) => {
+    const terminal = firmware.includes("2014") ? "29=legacy" : "31=001008000";
+    const config = parseAP510Config(`00=${firmware}\r\n${terminal}\r\n`);
+    expect(() => config.validateSerialCapture()).toThrow("missing required keys: 01");
+  });
+
+  it("rejects a complete-looking capture whose firmware header was lost", () => {
+    const config = parseAP510Config("01=N0CALL9\r\n31=001008000\r\n");
+    expect(() => config.validateSerialCapture()).toThrow("firmware record 00");
+  });
+
   it("rejects final-firmware captures missing required fields", () => {
     const config = parseAP510Config("00= AVRT5 20210404\r\n31=001008000\r\n");
 

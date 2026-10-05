@@ -211,6 +211,7 @@ const profiles = [
     fields: lateFields,
     requiredCaptureKeys: new Set([...lateFields.keys()].filter((key) => key !== "05")),
     terminalCaptureKeys: new Set(["31"]),
+    terminalCaptureLengths: new Map([["31", 9]]),
   },
   {
     identifier: "avrt5-20200605",
@@ -221,6 +222,7 @@ const profiles = [
     fields: lateFields,
     requiredCaptureKeys: new Set([...lateFields.keys()].filter((key) => key !== "05")),
     terminalCaptureKeys: new Set(["31"]),
+    terminalCaptureLengths: new Map([["31", 9]]),
   },
   {
     identifier: "avrt5-2014",

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +7,7 @@ import {
   SETUP_COMMANDS,
   TrackerSerialCancelledError,
   TrackerSerialNoResponseError,
+  TrackerSerialIncompleteResponseError,
   TrackerSerialSession,
   TrackerSerialUploadError,
   detectSetupVariant,
@@ -21,7 +23,8 @@ function text(raw) {
 }
 
 function finalResponse() {
-  return bytes("\r\n00= AVRT5 20210404\r\n01=N0CALL9\r\n31=001008000\r\n");
+  const fixture = readFileSync(new URL("./fixtures/late_config.ini", import.meta.url), "utf8");
+  return bytes("\r\n" + fixture.slice(fixture.indexOf("00="), fixture.indexOf("<end>")).replace(/\r?\n/g, "\r\n"));
 }
 
 class FakeTransport {
@@ -123,6 +126,33 @@ describe("tracker-serial framing", () => {
 });
 
 describe("TrackerSerialSession", () => {
+  it.each([
+    ["missing firmware", "01=N0CALL9\r\n31=001008000\r\n", "firmware record 00"],
+    ["empty firmware", "00=\r\n01=N0CALL9\r\n31=001008000\r\n", "firmware record 00"],
+    ["missing required field", text(finalResponse()).replace(/02=.*?\r\n/, ""), "missing required keys: 02"],
+    ["missing terminal", text(finalResponse()).replace(/31=.*?\r\n/, ""), "expected terminal key 31"],
+    ["partial terminal without newline", text(finalResponse()).replace(/31=.*?\r\n/, "31=001"), "complete numbered record"],
+    ["short terminal with newline", text(finalResponse()).replace(/31=.*?\r\n/, "31=001\r\n"), "terminal record 31"],
+  ])("rejects an incomplete serial capture: %s", async (_label, response, reason) => {
+    const events = [];
+    const session = new TrackerSerialSession({ transport: new FakeTransport(["\r\nSETUP\r\n", response, "", ""]), onEvent: (event) => events.push(event) });
+    let failure;
+    try { await session.readConfig({ setupAttempts: 1 }); } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(TrackerSerialIncompleteResponseError);
+    expect(failure.message).toContain(reason);
+    expect(text(failure.response)).toBe(response);
+    expect(events.some((event) => event.phase === "capture-complete")).toBe(false);
+    expect(events.some((event) => event.phase === "capture-incomplete")).toBe(true);
+    expect(session.protocolVariant).toBeNull();
+  });
+
+  it("accepts a terminal record split across chunks and preserves binary values", async () => {
+    const response = bytes(text(finalResponse()).replace(/15=.*?\r\n/, "15=0\x00\xff\r\n").replace(/31=.*?\r\n/, "31=0010\xff\xff\xff\xff0\r\n"));
+    const split = response.length - 5;
+    const session = new TrackerSerialSession({ transport: new FakeTransport(["\r\nSETUP\r\n", response.slice(0, split), response.slice(split), "", ""]) });
+    expect(await session.readConfig({ setupAttempts: 1 })).toEqual(response);
+  });
+
   it("opens and closes the injected transport", async () => {
     const transport = new FakeTransport();
     const session = new TrackerSerialSession({ transport });
