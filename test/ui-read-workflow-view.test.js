@@ -10,6 +10,19 @@ import {
 } from "../src/ui/read-workflow-view.js";
 
 describe("read workflow UI helpers", () => {
+  it("shows reconnect instructions after connection loss even with stale progress or write success", () => {
+    expect(readWorkflowCard({
+      state: TrackerWorkflowState.CONNECTION_LOST,
+      operationName: "read-config",
+      readProgress: { phase: "probing", attempt: 1, maxAttempts: 60 },
+      hasConfig: true,
+      writeVerified: true,
+    })).toMatchObject({
+      tone: "error", title: "Tracker connection lost", step: "Reconnect", progress: null,
+      message: expect.stringContaining("Click Disconnect, then Connect"),
+    });
+  });
+
   it("tells the user what to do after connecting", () => {
     expect(statusMessageForWorkflowStatus({
       type: "status",

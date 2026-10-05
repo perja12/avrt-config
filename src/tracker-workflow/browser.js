@@ -11,7 +11,11 @@ export function createBrowserTrackerWorkflow({
   SessionClass = TrackerSerialSession,
   WorkflowClass = TrackerWorkflow,
 } = {}) {
-  const emitSerial = (event) => onEvent({ type: "serial", event });
+  let workflow;
+  const emitSerial = (event) => {
+    onEvent({ type: "serial", event });
+    workflow?.handleSerialEvent?.(event);
+  };
   const serialSession = mockTracker
     ? new MockTrackerSerialSession({ onEvent: emitSerial, scenario: mockTracker === true ? "normal" : mockTracker })
     : new SessionClass({
@@ -19,5 +23,6 @@ export function createBrowserTrackerWorkflow({
         onEvent: emitSerial,
       });
 
-  return new WorkflowClass({ serialSession, onEvent });
+  workflow = new WorkflowClass({ serialSession, onEvent });
+  return workflow;
 }

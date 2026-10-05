@@ -581,7 +581,11 @@ function handleWorkflowEvent(event) {
   } else if (event.type === "state") {
     appendLog("state", `${event.previous} -> ${event.state}`);
   } else if (event.type === "status") {
-    setStatus(statusMessageForWorkflowStatus(event));
+    if (event.phase === "connection-lost") {
+      writeVerified = false;
+      readProgress = null;
+    }
+    setStatus(statusMessageForWorkflowStatus(event), event.phase === "connection-lost" ? "error" : undefined);
     appendLog("status", `${event.phase}: ${event.message}`);
   } else if (event.type === "operation-started") {
     writeVerified = false;
@@ -828,7 +832,7 @@ function renderTemplates() {
   elements.templateDelete.disabled = !template;
   const missingTemplateFields = getMissingTemplateFields();
   const templateDirty = templateCandidateDirty();
-  elements.templateWrite.disabled = !workflow.canWriteFirmware || templateNeedsReview || missingTemplateFields.length > 0 || !templatePrepared || !templateDirty || Boolean(workflow.currentOperation);
+  elements.templateWrite.disabled = workflow.state !== TrackerWorkflowState.LOADED || !workflow.canWriteFirmware || templateNeedsReview || missingTemplateFields.length > 0 || !templatePrepared || !templateDirty || Boolean(workflow.currentOperation);
   elements.templateSummary.textContent = "";
   elements.templateSummary.hidden = true;
   if (templatePrepared && !templateWriteVerified && !templateNeedsReview) {
@@ -1175,7 +1179,7 @@ function renderControls() {
   elements.templateRead.disabled = busy || !connected || !selectedTemplateId || !browserSupportsSerial;
   elements.disconnect.disabled = busy || state === TrackerWorkflowState.DISCONNECTED;
   elements.connectionDot.dataset.connected = String(connected || loaded);
-  elements.connectionText.textContent = connected || loaded ? `${mockTracker ? "Mock AP510" : "AP510"} (${state})` : "No tracker connected";
+  elements.connectionText.textContent = state === TrackerWorkflowState.CONNECTION_LOST ? "Tracker connection lost" : connected || loaded ? `${mockTracker ? "Mock AP510" : "AP510"} (${state})` : "No tracker connected";
   elements.browserSupportWarning.hidden = browserSupportsSerial;
   renderTrackerIdentity();
   renderWorkflowCard();

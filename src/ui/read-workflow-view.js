@@ -78,6 +78,16 @@ export function readButtonText({ state, operationName, readProgress }) {
 }
 
 export function readWorkflowCard({ state, operationName, readProgress, hasConfig, errorMessage = null, writeVerified = false, templateMode = false }) {
+  if (state === TrackerWorkflowState.CONNECTION_LOST) {
+    return {
+      tone: "error",
+      step: "Reconnect",
+      title: "Tracker connection lost",
+      message: "Click Disconnect, then Connect to reopen the serial connection. Keep the tracker off until you click Read.",
+      progress: null,
+    };
+  }
+
   if (writeVerified) {
     return {
       tone: "done",

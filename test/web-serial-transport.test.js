@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createBrowserTrackerWorkflow } from "../src/tracker-workflow/browser.js";
 import { TrackerWorkflow } from "../src/tracker-workflow/workflow.js";
 import { createSessionTrace } from "../src/diagnostics/session-trace.js";
 
@@ -77,6 +78,26 @@ class FakePort {
 }
 
 describe("WebSerialTransport", () => {
+  it.each([false, true])("notifies the browser workflow of device loss while reading=%s", async (reading) => {
+    const events = [];
+    const port = new FakePort();
+    let controller;
+    port.readable = new ReadableStream({ start(value) { controller = value; } });
+    const workflow = createBrowserTrackerWorkflow({ port, onEvent: (event) => events.push(event) });
+    await workflow.connect();
+    const pendingRead = reading ? workflow.readTrackerConfig() : null;
+    const rejection = pendingRead ? expect(pendingRead).rejects.toThrow() : null;
+    port.readable = null;
+    controller.error(new DOMException("The device has been lost.", "NetworkError"));
+    if (rejection) await rejection;
+    else { await Promise.resolve(); await Promise.resolve(); }
+    expect(workflow.state).toBe("connection-lost");
+    expect(workflow.currentOperation).toBeNull();
+    expect(events.some((event) => event.type === "status" && event.phase === "connection-lost")).toBe(true);
+    await workflow.disconnect();
+    expect(workflow.state).toBe("disconnected");
+  });
+
   it("opens AP510 serial defaults and asserts DTR for Debugprobe only", async () => {
     const port = new FakePort({ info: DEBUGPROBE_USB_IDS });
     const transport = new WebSerialTransport({ port });
