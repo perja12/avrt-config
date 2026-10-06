@@ -29,7 +29,13 @@
     <li>Click <i>Disconnect</i> to disconnect from the serial port.</li>
   </ol>
 
-  That should be it if everything went fine.
+  <h3>If Read does not complete</h3>
+  <ol>
+    <li>Turn the tracker off, click <i>Read</i>, then turn it on while the setup probes are running. A tracker already sending APRS may need this power cycle to enter setup mode.</li>
+    <li>If there is still no response, click <i>Disconnect</i>, then <i>Connect</i> and repeat the read sequence.</li>
+    <li>If reopening the port does not help, unplug the USB programming cable from the computer and reconnect it, then connect and retry with the tracker initially off. For a USB-powered cable such as a Pico/debugprobe, turning the tracker off does not reset the cable.</li>
+  </ol>
+  <p>If the problem persists, download the trace from <i>Diagnostics</i> before reloading the page, and include the cable type and the recovery steps you tried in your issue report.</p>
 
 </section>
 
