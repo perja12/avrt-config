@@ -29,6 +29,12 @@ describe("read workflow UI helpers", () => {
     });
   });
 
+  it("keeps a failed connection visible while offering Connect again", () => {
+    expect(readWorkflowCard({ state: TrackerWorkflowState.DISCONNECTED, errorMessage: "Failed to open port" })).toMatchObject({
+      title: "Connection did not open", tone: "error", message: expect.stringContaining("Click Connect"),
+    });
+  });
+
   it("tells the user what to do after connecting", () => {
     expect(statusMessageForWorkflowStatus({
       type: "status",

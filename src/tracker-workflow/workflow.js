@@ -201,7 +201,10 @@ export class TrackerWorkflow {
       this.#emit({ type: "operation-completed", operation: name });
       return result;
     } catch (error) {
-      if (this.state !== TrackerWorkflowState.CONNECTION_LOST) {
+      if (["connect", "disconnect"].includes(name) && this.serialSession.connectionOpen !== undefined) {
+        this.lastError = error;
+        this.#setState(this.serialSession.connectionOpen ? TrackerWorkflowState.CONNECTION_LOST : TrackerWorkflowState.DISCONNECTED);
+      } else if (this.state !== TrackerWorkflowState.CONNECTION_LOST) {
         this.lastError = error;
         if (this.state !== TrackerWorkflowState.DISCONNECTED) this.#setState(TrackerWorkflowState.ERROR);
       }
