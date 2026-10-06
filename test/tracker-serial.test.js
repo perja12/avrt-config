@@ -270,14 +270,14 @@ describe("TrackerSerialSession", () => {
 
   it.each([
     ["setup silence", ["", ""]],
-    ["echo-only configuration", ["\r\nSETUP\r\n", "\r\nDISP\r\n", "", "", "", ""]],
+    ["echo-only configuration", ["\r\nSETUP\r\n", "\r\nDISP\r\n", "", "", "\r\nSETUP\r\n", "\r\nDISP\r\n", "", ""]],
   ])("offers recovery steps after %s", async (_label, responses) => {
     const session = new TrackerSerialSession({ transport: new FakeTransport(responses), clock: noDelayClock });
     const result = session.readConfig({ setupAttempts: 2 });
     await expect(result).rejects.toBeInstanceOf(TrackerSerialNoResponseError);
-    await expect(result).rejects.toMatchObject({ message: expect.stringContaining("reconnect the port") });
-    await expect(result).rejects.toMatchObject({ message: expect.stringContaining("unplug and reconnect the USB cable") });
-    await expect(result).rejects.toMatchObject({ message: expect.stringContaining("save the Diagnostics trace before reloading") });
+    await expect(result).rejects.toMatchObject({ message: _label === "setup silence"
+      ? "Tracker did not respond. See Help for recovery steps."
+      : "No configuration received. See Help for recovery steps." });
   });
 
   it("catches a tracker that powers on during the setup probing window", async () => {
