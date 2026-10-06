@@ -25,6 +25,7 @@ export function createSessionTrace({ build, mode, now = () => Date.now() } = {})
       } else if (serial.type === "status" || serial.type === "progress" || serial.type === "transport") {
         entry = { type: `serial-${serial.type}`, phase: serial.phase };
         if (serial.message !== undefined) entry.message = serial.message;
+        if (serial.cancellable !== undefined) entry.cancellable = serial.cancellable;
         if (serial.detail !== undefined) entry.detail = structuredClone(serial.detail);
         if (serial.bytesReceived !== undefined) entry.bytes_received = serial.bytesReceived;
       }

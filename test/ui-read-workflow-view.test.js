@@ -23,6 +23,12 @@ describe("read workflow UI helpers", () => {
     });
   });
 
+  it("shows setup checking before a write starts", () => {
+    expect(readWorkflowCard({ state: TrackerWorkflowState.WRITING, operationName: "write-config", writePreparing: true, readProgress: { phase: "probing", attempt: 30, maxAttempts: 60 } })).toMatchObject({
+      title: "Checking tracker before writing", progress: 50, message: expect.stringContaining("Cancel"),
+    });
+  });
+
   it("tells the user what to do after connecting", () => {
     expect(statusMessageForWorkflowStatus({
       type: "status",

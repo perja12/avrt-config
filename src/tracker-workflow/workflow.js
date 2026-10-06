@@ -17,6 +17,11 @@ export class TrackerWorkflow {
   }
 
   handleSerialEvent(event) {
+    if (event.type === "status" && this.currentOperation?.name === "write-config" && ["checking-setup", "writing"].includes(event.phase)) {
+      this.currentOperation.cancellable = event.phase === "checking-setup";
+      this.currentOperation.stage = event.phase;
+      this.#emitStatus(event.phase, event.message);
+    }
     const connectionEnded = event.type === "transport" && (
       (event.phase === "receive-loop-ended" && event.detail?.reason !== "close-requested") ||
       event.phase === "write-abort-requested"

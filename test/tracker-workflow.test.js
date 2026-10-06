@@ -209,6 +209,23 @@ describe("TrackerWorkflow", () => {
     expect(events.map((event) => event.type)).toContain("draft-reset");
   });
 
+  it("allows cancellation during readiness checking but disables it before uploading", async () => {
+    const serialSession = new FakeSerialSession();
+    const workflow = new TrackerWorkflow({ serialSession, parseConfig: makeConfig });
+    await workflow.connect();
+    await workflow.readTrackerConfig();
+    serialSession.writeConfig = async () => {
+      workflow.handleSerialEvent({ type: "status", phase: "checking-setup", message: "Checking setup" });
+      expect(workflow.canCancel).toBe(true);
+      workflow.handleSerialEvent({ type: "status", phase: "writing", message: "Uploading" });
+      expect(workflow.canCancel).toBe(false);
+      expect(workflow.cancelOperation()).toBe(false);
+      return bytes("OK");
+    };
+    await workflow.writeTrackerConfig();
+    expect(workflow.state).toBe(TrackerWorkflowState.LOADED);
+  });
+
   it("writes a validated draft and replaces the baseline only after acknowledgement", async () => {
     const raw = bytes("00=FW\r\n31=end\r\n");
     const parsedConfig = makeConfig(raw);
