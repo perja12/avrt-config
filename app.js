@@ -1186,7 +1186,7 @@ function renderControls() {
   renderWorkflowCard();
   renderChangeSummary();
   renderTemplates();
-  if (state === TrackerWorkflowState.DISCONNECTED && !latestConfig) elements.status.textContent = "";
+  if (state === TrackerWorkflowState.DISCONNECTED && !latestConfig && !workflow.lastError) elements.status.textContent = "";
 }
 
 function renderFirmwareWriteWarnings() {

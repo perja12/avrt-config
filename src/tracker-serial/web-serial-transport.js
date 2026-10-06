@@ -2,6 +2,7 @@ import { TrackerSerialTimeoutError } from "./errors.js";
 
 const RECOVERABLE_RECEIVE_ERRORS = new Set(["FramingError", "ParityError", "BufferOverrunError", "BreakError"]);
 const MAX_CONSECUTIVE_RECEIVE_RECOVERIES = 3;
+const CLEANUP_TIMEOUT_MS = 3000;
 
 export const DEBUGPROBE_USB_IDS = Object.freeze({ usbVendorId: 0x2e8a, usbProductId: 0x000c });
 
@@ -20,6 +21,13 @@ export class WebSerialTransport {
     this.lastReadError = null;
   }
 
+  #portOpened = false;
+  #portClosePromise = null;
+
+  get hasOpenPort() {
+    return this.#portOpened;
+  }
+
   async requestPort(options) {
     if (!this.serial) throw new Error("Web Serial is not available");
     this.port = await this.serial.requestPort(options);
@@ -27,55 +35,108 @@ export class WebSerialTransport {
   }
 
   async open(options = {}) {
-    if (!this.port) await this.requestPort(options.requestPort);
-    const portOptions = {
-      baudRate: 9600,
-      dataBits: 8,
-      parity: "none",
-      stopBits: 1,
-      flowControl: "none",
-      bufferSize: 1024,
-      ...options.port,
-    };
-    this.#diagnostic("opening", { portOptions, usbInfo: this.port.getInfo?.() ?? {} });
+    if (this.#portOpened) throw new Error("Serial port is still open; disconnect before reconnecting");
     try {
+      if (!this.port) await this.requestPort(options.requestPort);
+      const portOptions = {
+        baudRate: 9600,
+        dataBits: 8,
+        parity: "none",
+        stopBits: 1,
+        flowControl: "none",
+        bufferSize: 1024,
+        ...options.port,
+      };
+      const info = this.port.getInfo?.() ?? {};
+      this.#diagnostic("opening", { portOptions, usbInfo: info });
       await this.port.open(portOptions);
+      this.#portOpened = true;
+      const isDebugprobe =
+        info.usbVendorId === DEBUGPROBE_USB_IDS.usbVendorId &&
+        info.usbProductId === DEBUGPROBE_USB_IDS.usbProductId;
+      await this.setSignals({ dataTerminalReady: isDebugprobe, requestToSend: false });
+      this.closed = false;
+      this.lastReadError = null;
+      this.#diagnostic("opened");
+      this.#startReadLoop();
     } catch (error) {
       this.#diagnostic("open-error", { error: describeError(error) });
+      if (this.#portOpened) {
+        try {
+          await this.close();
+        } catch (cleanupError) {
+          this.#diagnostic("open-cleanup-error", { error: describeError(cleanupError) });
+        }
+      } else {
+        // An unsuccessful open did not acquire this port. Do not close a port
+        // that may belong to another connection.
+        this.#clearConnection();
+      }
       throw error;
     }
-
-    const info = this.port.getInfo?.() ?? {};
-    const isDebugprobe =
-      info.usbVendorId === DEBUGPROBE_USB_IDS.usbVendorId &&
-      info.usbProductId === DEBUGPROBE_USB_IDS.usbProductId;
-    await this.setSignals({ dataTerminalReady: isDebugprobe, requestToSend: false });
-    this.closed = false;
-    this.lastReadError = null;
-    this.#diagnostic("opened");
-    this.#startReadLoop();
   }
 
   async close() {
     if (!this.port) return;
     this.#diagnostic("close-requested");
+    if (this.#portClosePromise) {
+      await this.#finishPortClose();
+      return;
+    }
     this.closed = true;
     this.#rejectWrites(new Error("Serial connection closed"));
     for (const waiter of this.waitingReads.splice(0)) waiter.resolve(new Uint8Array());
-    await this.reader?.cancel();
-    await this.readLoopPromise;
+    const reader = this.reader;
     try {
-      await this.setSignals({ dataTerminalReady: false, requestToSend: false });
-    } catch (_) {
-      this.#diagnostic("signals-error-during-close", { error: describeError(_) });
-      // Device may already be gone.
+      await withCleanupTimeout(reader?.cancel(), "cancelling the serial reader");
+    } catch (error) {
+      this.#diagnostic("receive-cancel-error", { error: describeError(error) });
+      // Releasing a real stream's reader rejects pending reads, allowing the
+      // receive loop to finish even when cancellation itself fails.
+      reader?.releaseLock();
     }
-    await this.port.close();
+    try {
+      await withCleanupTimeout(this.readLoopPromise, "stopping the serial receive loop");
+    } catch (error) {
+      this.#diagnostic("receive-stop-error", { error: describeError(error) });
+      throw error;
+    }
+    try {
+      await withCleanupTimeout(this.setSignals({ dataTerminalReady: false, requestToSend: false }), "clearing serial control signals");
+    } catch (error) {
+      this.#diagnostic("signals-error-during-close", { error: describeError(error) });
+    }
+    await this.#finishPortClose();
+  }
+
+  async #finishPortClose() {
+    // A timeout interrupts only our wait. Native close may still be pending;
+    // retries must wait for that same operation instead of closing again.
+    this.#portClosePromise ??= Promise.resolve().then(() => this.port.close()).catch((error) => {
+      this.#portClosePromise = null;
+      throw error;
+    });
+    try {
+      await withCleanupTimeout(this.#portClosePromise, "closing the serial port");
+    } catch (error) {
+      this.#diagnostic("close-error", { error: describeError(error) });
+      // Keep an open handle so Disconnect can retry cleanup. A removed or
+      // already closed port with no streams needs no further cleanup.
+      const alreadyGone = ["InvalidStateError", "NetworkError"].includes(error?.name) && !this.port.readable && !this.port.writable;
+      if (!alreadyGone) throw error;
+    }
+    this.#clearConnection();
+    this.#diagnostic("closed");
+  }
+
+  #clearConnection() {
+    this.closed = true;
     this.port = null;
+    this.#portOpened = false;
+    this.#portClosePromise = null;
     this.reader = null;
     this.readLoopPromise = null;
     this.readQueue = [];
-    this.#diagnostic("closed");
   }
 
   async setSignals(signals) {
@@ -288,4 +349,18 @@ export class WebSerialTransport {
 
 function describeError(error) {
   return { name: error?.name ?? "Error", message: error?.message ?? String(error) };
+}
+
+async function withCleanupTimeout(operation, action) {
+  let timeout;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new TrackerSerialTimeoutError(`Timed out ${action}; retry Disconnect or unplug the USB cable`)), CLEANUP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }

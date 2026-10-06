@@ -165,6 +165,139 @@ describe("WebSerialTransport", () => {
     await transport.close();
   });
 
+  it("cleans up an acquired port when initial signal configuration fails", async () => {
+    const port = new FakePort();
+    const error = new Error("signals failed");
+    port.setSignals = async () => { throw error; };
+    const workflow = createBrowserTrackerWorkflow({ port });
+    await expect(workflow.connect()).rejects.toBe(error);
+    expect(port.closeCalls).toBe(1);
+    expect(workflow.state).toBe("disconnected");
+    expect(workflow.currentOperation).toBeNull();
+    expect(workflow.serialSession.transport.port).toBeNull();
+  });
+
+  it("returns to disconnected after a cancelled chooser and permits another connection", async () => {
+    const port = new FakePort();
+    const error = new DOMException("No port selected", "NotFoundError");
+    const serial = { requestPort: vi.fn().mockRejectedValueOnce(error).mockResolvedValueOnce(port) };
+    const workflow = createBrowserTrackerWorkflow({ serial });
+    await expect(workflow.connect()).rejects.toBe(error);
+    expect(workflow.state).toBe("disconnected");
+    await workflow.connect();
+    expect(workflow.state).toBe("connected");
+    await workflow.disconnect();
+  });
+
+  it("does not close a port it failed to acquire", async () => {
+    const port = new FakePort();
+    port.open = async () => { throw new Error("Already in use"); };
+    const transport = new WebSerialTransport({ port });
+    await expect(transport.open()).rejects.toThrow("Already in use");
+    expect(port.closeCalls).toBe(0);
+    expect(transport.hasOpenPort).toBe(false);
+    expect(transport.port).toBeNull();
+  });
+
+  it("retains the port for retry if cleanup after a failed open also fails", async () => {
+    const port = new FakePort();
+    port.setSignals = async () => { throw new Error("signals failed"); };
+    port.close = vi.fn().mockRejectedValueOnce(new Error("close failed")).mockResolvedValueOnce();
+    const workflow = createBrowserTrackerWorkflow({ port });
+    await expect(workflow.connect()).rejects.toThrow("signals failed");
+    expect(workflow.state).toBe("connection-lost");
+    expect(workflow.serialSession.transport.port).toBe(port);
+    await workflow.disconnect();
+    expect(workflow.state).toBe("disconnected");
+  });
+
+  it("releases a real reader even if its cancellation fails", async () => {
+    const port = new FakePort();
+    port.readable = new ReadableStream({ cancel: () => Promise.reject(new Error("cancel failed")) });
+    const stream = port.readable;
+    const transport = new WebSerialTransport({ port });
+    await transport.open();
+    await transport.close();
+    expect(stream.locked).toBe(false);
+    expect(port.closeCalls).toBe(1);
+    expect(transport.port).toBeNull();
+  });
+
+  it("does not hang the workflow on a stalled port close and allows retry", async () => {
+    vi.useFakeTimers();
+    try {
+      const port = new FakePort();
+      let finishClose;
+      port.close = vi.fn(() => new Promise((resolve) => { finishClose = resolve; }));
+      const workflow = createBrowserTrackerWorkflow({ port });
+      await workflow.connect();
+      const closing = workflow.disconnect();
+      const rejection = expect(closing).rejects.toThrow("Timed out closing the serial port");
+      await vi.advanceTimersByTimeAsync(3000);
+      await rejection;
+      expect(workflow.currentOperation).toBeNull();
+      expect(workflow.state).toBe("connection-lost");
+      expect(workflow.serialSession.transport.port).toBe(port);
+      await expect(workflow.serialSession.transport.open()).rejects.toThrow("still open");
+      finishClose();
+      await workflow.disconnect();
+      expect(port.close).toHaveBeenCalledTimes(1);
+      expect(workflow.state).toBe("disconnected");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retains a timed-out close even if the browser has already cleared its streams", async () => {
+    vi.useFakeTimers();
+    try {
+      const port = new FakePort();
+      const transport = new WebSerialTransport({ port });
+      await transport.open();
+      let finishClose;
+      port.close = vi.fn().mockImplementationOnce(() => {
+        port.readable = null;
+        port.writable = null;
+        return new Promise((resolve) => { finishClose = resolve; });
+      }).mockRejectedValue(new DOMException("Still closing", "InvalidStateError"));
+      const closing = transport.close();
+      const rejection = expect(closing).rejects.toThrow("Timed out closing the serial port");
+      await vi.advanceTimersByTimeAsync(3000);
+      await rejection;
+      expect(transport.hasOpenPort).toBe(true);
+      expect(transport.port).toBe(port);
+      const retry = transport.close();
+      const retryRejection = expect(retry).rejects.toThrow("Timed out closing the serial port");
+      await vi.advanceTimersByTimeAsync(3000);
+      await retryRejection;
+      expect(port.close).toHaveBeenCalledTimes(1);
+      expect(transport.hasOpenPort).toBe(true);
+      expect(transport.port).toBe(port);
+      await expect(transport.open()).rejects.toThrow("still open");
+      finishClose();
+      await transport.close();
+      expect(port.close).toHaveBeenCalledTimes(1);
+      expect(transport.port).toBeNull();
+      expect(transport.hasOpenPort).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats an already closed port as cleaned up even if close rejects", async () => {
+    const port = new FakePort();
+    const transport = new WebSerialTransport({ port });
+    await transport.open();
+    port.close = async () => {
+      port.readable = null;
+      port.writable = null;
+      throw new DOMException("Already closed", "InvalidStateError");
+    };
+    await transport.close();
+    expect(transport.port).toBeNull();
+    expect(transport.hasOpenPort).toBe(false);
+  });
+
   it("opens AP510 serial defaults and asserts DTR for Debugprobe only", async () => {
     const port = new FakePort({ info: DEBUGPROBE_USB_IDS });
     const transport = new WebSerialTransport({ port });

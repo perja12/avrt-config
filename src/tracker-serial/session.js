@@ -37,6 +37,10 @@ export class TrackerSerialSession {
 
   #protocolVariant;
 
+  get connectionOpen() {
+    return this.transport.hasOpenPort;
+  }
+
   get protocolVariant() {
     return this.#protocolVariant;
   }

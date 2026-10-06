@@ -151,6 +151,16 @@ export function readWorkflowCard({ state, operationName, readProgress, hasConfig
     };
   }
 
+  if (state === TrackerWorkflowState.DISCONNECTED && errorMessage) {
+    return {
+      tone: "error",
+      step: "Connect again",
+      title: "Connection did not open",
+      message: `${errorMessage} Click Connect to try again.`,
+      progress: null,
+    };
+  }
+
   if (state === TrackerWorkflowState.DISCONNECTED) {
     return {
       tone: "idle",
