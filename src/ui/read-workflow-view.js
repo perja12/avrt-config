@@ -77,7 +77,7 @@ export function readButtonText({ state, operationName, readProgress }) {
   return "Read";
 }
 
-export function readWorkflowCard({ state, operationName, readProgress, hasConfig, errorMessage = null, writeVerified = false, templateMode = false }) {
+export function readWorkflowCard({ state, operationName, readProgress, hasConfig, errorMessage = null, writeVerified = false, templateMode = false, writePreparing = false }) {
   if (state === TrackerWorkflowState.CONNECTION_LOST) {
     return {
       tone: "error",
@@ -85,6 +85,16 @@ export function readWorkflowCard({ state, operationName, readProgress, hasConfig
       title: "Tracker connection lost",
       message: "Click Disconnect, then Connect to reopen the serial connection. Keep the tracker off until you click Read.",
       progress: null,
+    };
+  }
+
+  if (writePreparing) {
+    return {
+      tone: "active",
+      step: "Checking setup",
+      title: "Checking tracker before writing",
+      message: "Confirming setup mode. Cancel is available until uploading starts.",
+      progress: readProgress?.phase === "probing" ? progressPercent(readProgress) : null,
     };
   }
 

@@ -1057,6 +1057,7 @@ function renderTemplateWorkflowCard() {
     operationName: workflow.currentOperation?.name,
     readProgress,
     hasConfig: Boolean(latestConfig),
+    writePreparing: workflow.currentOperation?.stage === "checking-setup",
     errorMessage: workflow.lastError?.message ?? null,
     writeVerified: activeWorkspace === "program" && templateWriteVerified,
     templateMode: true,
@@ -1229,6 +1230,7 @@ function renderWorkflowCard() {
     operationName: workflow.currentOperation?.name,
     readProgress,
     hasConfig: Boolean(latestConfig),
+    writePreparing: workflow.currentOperation?.stage === "checking-setup",
     errorMessage: workflow.lastError?.message ?? null,
     writeVerified,
   });

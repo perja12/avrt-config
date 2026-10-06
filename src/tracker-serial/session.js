@@ -104,9 +104,28 @@ export class TrackerSerialSession {
 
   async writeConfig(records, { variant = ProtocolVariant.NEW, signal, interRecordDelayMs = 50, acknowledgementReads = DEFAULT_OPTIONS.acknowledgementReads } = {}) {
     if (interRecordDelayMs < 0) throw new RangeError("interRecordDelayMs may not be negative");
-    const writable = [...records].filter((record) => record.key !== "00");
+    const sourceRecords = [...records];
+    const writable = sourceRecords.filter((record) => record.key !== "00");
     if (writable.length === 0) throw new TrackerSerialUploadError("configuration contains no writable records");
 
+    this.#throwIfAborted(signal);
+    this.#emitStatus("checking-setup", "Checking tracker setup mode before writing", { cancellable: true });
+    let baseline;
+    try {
+      baseline = await this.readConfig({ signal });
+    } catch (error) {
+      if (error instanceof TrackerSerialNoResponseError || error instanceof TrackerSerialIncompleteResponseError) {
+        throw new TrackerSerialUploadError(`Tracker setup mode could not be confirmed; no configuration fields were sent. Click Read and power-cycle the tracker, then try Write again. ${error.message}`, { cause: error, response: error.response });
+      }
+      throw error;
+    }
+    if (this.#protocolVariant !== variant) {
+      throw new TrackerSerialUploadError("Tracker protocol changed; no configuration fields were sent. Click Read again before writing.");
+    }
+    const expectedFirmware = sourceRecords.find((record) => record.key === "00");
+    if (expectedFirmware && String.fromCharCode(...expectedFirmware.value).trim() !== parseAP510Config(baseline).firmware()) {
+      throw new TrackerSerialUploadError("Tracker firmware changed; no configuration fields were sent. Click Read again before writing.");
+    }
     this.#throwIfAborted(signal);
     this.#emitStatus("writing", "Writing tracker configuration", { cancellable: false, detail: { recordCount: writable.length, variant } });
 

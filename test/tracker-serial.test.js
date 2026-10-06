@@ -317,8 +317,48 @@ describe("TrackerSerialSession", () => {
     await expect(session.readConfig({ signal: controller.signal })).rejects.toBeInstanceOf(TrackerSerialCancelledError);
   });
 
+  it.each([
+    ["silence", []],
+    ["setup and display echoes", ["\r\nSETUP\r\n", "\r\nDISP\r\n", "", ""]],
+    ["incomplete capture", ["\r\nSETUP\r\n", "00=AVRT5 20210404\r\n01=N0CALL9\r\n", "", ""]],
+  ])("does not send configuration fields when readiness checking receives %s", async (_label, responses) => {
+    const transport = new FakeTransport(responses);
+    const session = new TrackerSerialSession({ transport, clock: noDelayClock });
+    await expect(session.writeConfig([{ key: "01", value: bytes("N0CALL9") }], { interRecordDelayMs: 0 })).rejects.toThrow("no configuration fields were sent");
+    expect(transport.writes.every((chunk) => ["\r\nSETUP\r\n", "@SETUP", "\r\nDISP\r\n", "@DISP"].includes(text(chunk)))).toBe(true);
+  });
+
+  it("blocks an upload if firmware differs from the draft baseline", async () => {
+    const transport = new FakeTransport(["\r\nSETUP\r\n", finalResponse(), "", ""]);
+    const session = new TrackerSerialSession({ transport });
+    await expect(session.writeConfig([
+      { key: "00", value: bytes("AVRT5 20200605") }, { key: "01", value: bytes("N0CALL9") },
+    ])).rejects.toThrow("firmware changed");
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "\r\nDISP\r\n"]);
+  });
+
+  it("blocks an upload if the freshly detected protocol differs", async () => {
+    const transport = new FakeTransport(["SETUP", "00=AVRT5 20141008\r\n01=N0CALL9\r\n29=legacy\r\n", "", ""]);
+    const session = new TrackerSerialSession({ transport });
+    await expect(session.writeConfig([{ key: "01", value: bytes("N0CALL9") }], { variant: ProtocolVariant.NEW })).rejects.toThrow("protocol changed");
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "@DISP"]);
+  });
+
+  it("can cancel readiness checking without sending configuration fields", async () => {
+    const controller = new AbortController();
+    const transport = new FakeTransport();
+    transport.read = async ({ signal }) => {
+      controller.abort();
+      expect(signal.aborted).toBe(true);
+      return new Uint8Array();
+    };
+    const session = new TrackerSerialSession({ transport });
+    await expect(session.writeConfig([{ key: "01", value: bytes("N0CALL9") }], { signal: controller.signal })).rejects.toBeInstanceOf(TrackerSerialCancelledError);
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n"]);
+  });
+
   it("writes new-protocol records and waits for final OK", async () => {
-    const transport = new FakeTransport(["\r\nOK"]);
+    const transport = new FakeTransport(["\r\nSETUP\r\n", finalResponse(), "", "", "\r\nOK"]);
     const session = new TrackerSerialSession({ transport, clock: noDelayClock });
     const records = [
       { key: "00", value: bytes(" AVRT5 20210404") },
@@ -329,11 +369,11 @@ describe("TrackerSerialSession", () => {
     const acknowledgement = await session.writeConfig(records, { variant: ProtocolVariant.NEW, interRecordDelayMs: 0 });
 
     expect(text(acknowledgement)).toBe("\r\nOK");
-    expect(transport.writes.map(text)).toEqual(["01=N0CALL9\r\n", "09=status\r\n"]);
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "\r\nDISP\r\n", "01=N0CALL9\r\n", "09=status\r\n"]);
   });
 
   it("writes legacy records using field-specific framing", async () => {
-    const transport = new FakeTransport(["OK", "OK"]);
+    const transport = new FakeTransport(["SETUP", "00=AVRT5 20141008\r\n01=N0CALL9\r\n29=legacy\r\n", "", "", "OK", "OK"]);
     const session = new TrackerSerialSession({ transport, clock: noDelayClock });
     const records = [
       { key: "00", value: bytes("AVRT5 20141008") },
@@ -345,11 +385,11 @@ describe("TrackerSerialSession", () => {
     const acknowledgement = await session.writeConfig(records, { variant: ProtocolVariant.LEGACY, interRecordDelayMs: 0 });
 
     expect(text(acknowledgement)).toBe("OKOK");
-    expect(transport.writes.map(text)).toEqual(["@09status\u0000\r\n", "@150abc\u0000\r\n", "@16145.5000"]);
+    expect(transport.writes.map(text)).toEqual(["\r\nSETUP\r\n", "@DISP", "@09status\u0000\r\n", "@150abc\u0000\r\n", "@16145.5000"]);
   });
 
   it("rejects bad write acknowledgements", async () => {
-    const session = new TrackerSerialSession({ transport: new FakeTransport(["NO"]), clock: noDelayClock });
+    const session = new TrackerSerialSession({ transport: new FakeTransport(["\r\nSETUP\r\n", finalResponse(), "", "", "NO"]), clock: noDelayClock });
 
     await expect(
       session.writeConfig([{ key: "01", value: bytes("N0CALL9") }], { variant: ProtocolVariant.NEW, interRecordDelayMs: 0 }),
