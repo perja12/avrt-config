@@ -23,6 +23,7 @@ const SETUP_RESPONSE_PREFIXES = ["\r\nSETUP", "SETUP"].flatMap((marker) =>
   Array.from({ length: marker.length - 1 }, (_, index) => marker.slice(0, index + 1)),
 );
 const MAX_SETUP_RESPONSE_CHUNKS = 32;
+const NO_RESPONSE_RECOVERY = "Turn the tracker off, click Read, then turn it on. If it still fails, reconnect the port or unplug and reconnect the USB cable. See Help for recovery steps; save the Diagnostics trace before reloading.";
 
 const LEGACY_NUL_TERMINATED_KEYS = new Set(["09", "10", "15"]);
 
@@ -102,7 +103,7 @@ export class TrackerSerialSession {
     }
 
     throw new TrackerSerialNoResponseError(
-      "AP510 returned only command echoes, noise, or silence, not a configuration; start with the tracker off and power it on while probes are running",
+      `AP510 returned only command echoes, noise, or silence, not a configuration. ${NO_RESPONSE_RECOVERY}`,
     );
   }
 
@@ -201,7 +202,7 @@ export class TrackerSerialSession {
     }
 
     throw new TrackerSerialNoResponseError(
-      "AP510 did not answer setup probes; start with the tracker off and power it on while probes are running",
+      `AP510 did not answer setup probes. ${NO_RESPONSE_RECOVERY}`,
     );
   }
 
