@@ -21,6 +21,8 @@ export class WebSerialTransport {
     this.lastReadError = null;
   }
 
+  #signalSnapshotPending = false;
+  #connectionListener = null;
   #portOpened = false;
   #portClosePromise = null;
 
@@ -59,6 +61,13 @@ export class WebSerialTransport {
       this.lastReadError = null;
       this.#diagnostic("opened");
       this.#startReadLoop();
+      this.#connectionListener = (event) => {
+        if ((event.port ?? event.target) !== this.port) return;
+        this.#diagnostic(`device-${event.type}`, this.#streamState());
+      };
+      this.serial?.addEventListener?.("connect", this.#connectionListener);
+      this.serial?.addEventListener?.("disconnect", this.#connectionListener);
+      this.captureDiagnostics("opened");
     } catch (error) {
       this.#diagnostic("open-error", { error: describeError(error) });
       if (this.#portOpened) {
@@ -130,6 +139,11 @@ export class WebSerialTransport {
   }
 
   #clearConnection() {
+    if (this.#connectionListener) {
+      this.serial?.removeEventListener?.("connect", this.#connectionListener);
+      this.serial?.removeEventListener?.("disconnect", this.#connectionListener);
+      this.#connectionListener = null;
+    }
     this.closed = true;
     this.port = null;
     this.#portOpened = false;
@@ -137,6 +151,42 @@ export class WebSerialTransport {
     this.reader = null;
     this.readLoopPromise = null;
     this.readQueue = [];
+  }
+
+  #streamState() {
+    return {
+      readable: Boolean(this.port?.readable),
+      writable: Boolean(this.port?.writable),
+      readableLocked: this.port?.readable?.locked ?? null,
+      writableLocked: this.port?.writable?.locked ?? null,
+      readerActive: Boolean(this.reader),
+      queuedChunks: this.readQueue.length,
+      waitingReads: this.waitingReads.length,
+    };
+  }
+
+  // Deliberately detached: diagnostics must not delay setup probes or recovery.
+  captureDiagnostics(reason) {
+    this.#diagnostic("stream-state", { reason, ...this.#streamState() });
+    const port = this.port;
+    if (!port?.getSignals || !this.#portOpened || this.#signalSnapshotPending) {
+      this.#diagnostic("input-signals-unavailable", { reason, pending: this.#signalSnapshotPending, supported: Boolean(port?.getSignals) });
+      return;
+    }
+    this.#signalSnapshotPending = true;
+    let timer;
+    Promise.race([
+      Promise.resolve().then(() => port.getSignals()),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Input signal query timed out")), 500);
+      }),
+    ]).then(
+      (signals) => this.#diagnostic("input-signals", { reason, signals }),
+      (error) => this.#diagnostic("input-signals-error", { reason, error: describeError(error) }),
+    ).finally(() => {
+      clearTimeout(timer);
+      this.#signalSnapshotPending = false;
+    });
   }
 
   async setSignals(signals) {

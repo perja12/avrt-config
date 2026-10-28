@@ -57,6 +57,16 @@ export class TrackerSerialSession {
   }
 
   async readConfig(options = {}) {
+    this.transport.captureDiagnostics?.("before-read");
+    try {
+      return await this.#readConfig(options);
+    } catch (error) {
+      this.transport.captureDiagnostics?.("read-failed");
+      throw error;
+    }
+  }
+
+  async #readConfig(options = {}) {
     const settings = { ...DEFAULT_OPTIONS, ...options };
     validatePositiveInteger(settings.setupAttempts, "setupAttempts");
     validatePositiveInteger(settings.idleReads, "idleReads");

@@ -3,6 +3,28 @@ import { describe, expect, it } from "vitest";
 import { createSessionTrace } from "../src/diagnostics/session-trace.js";
 
 describe("session trace", () => {
+  it("summarizes each read independently and separates arrival from consumption", () => {
+    let time = 1000;
+    const trace = createSessionTrace({ now: () => time, navigatorLike: { userAgent: "Test browser", platform: "Test OS", serial: {} } });
+    const serial = (event) => trace.record({ type: "serial", event });
+    trace.record({ type: "operation-started", operation: "read-config" });
+    serial({ type: "status", phase: "probing" });
+    serial({ type: "tx", bytes: new Uint8Array(9) });
+    serial({ type: "rx-arrived", bytes: new Uint8Array(5) });
+    serial({ type: "rx", bytes: new Uint8Array(3) });
+    serial({ type: "rx", bytes: new Uint8Array() });
+    time += 250;
+    trace.record({ type: "operation-failed", operation: "read-config", error: new Error("timeout") });
+    const first = trace.snapshot();
+    expect(first.environment).toEqual({ user_agent: "Test browser", platform: "Test OS", web_serial_available: true });
+    expect(first.events.at(-1).read_summary).toEqual({ setup_probes: 1, tx_bytes: 9, rx_bytes: 3, transport_rx_bytes: 5, empty_reads: 1, elapsed_ms: 250 });
+    trace.record({ type: "operation-started", operation: "read-config" });
+    trace.record({ type: "operation-completed", operation: "read-config" });
+    expect(trace.snapshot().events.at(-1).read_summary).toEqual({ setup_probes: 0, tx_bytes: 0, rx_bytes: 0, transport_rx_bytes: 0, empty_reads: 0, elapsed_ms: 0 });
+    first.environment.platform = "changed";
+    expect(trace.snapshot().environment.platform).toBe("Test OS");
+  });
+
   it("preserves byte chunks, empty reads, captures, and failures in order", () => {
     let time = Date.parse("2026-10-02T12:00:00.000Z");
     const trace = createSessionTrace({ build: "test-build", mode: "web-serial", now: () => time++ });

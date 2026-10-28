@@ -1,11 +1,30 @@
 import { bytesToBase64 } from "../tracker-config/bytes.js";
 
-export function createSessionTrace({ build, mode, now = () => Date.now() } = {}) {
+export function createSessionTrace({ build, mode, now = () => Date.now(), navigatorLike = globalThis.navigator } = {}) {
   const createdAt = new Date(now()).toISOString();
   const events = [];
+  const environment = {
+    user_agent: navigatorLike?.userAgent ?? null,
+    platform: navigatorLike?.userAgentData?.platform ?? navigatorLike?.platform ?? null,
+    web_serial_available: Boolean(navigatorLike?.serial),
+  };
+  let readSummary = null;
 
   function record(source) {
     let entry = null;
+    if (source.type === "operation-started" && source.operation === "read-config") {
+      readSummary = { started_at_ms: now(), setup_probes: 0, tx_bytes: 0, rx_bytes: 0, empty_reads: 0, transport_rx_bytes: 0 };
+    }
+    if (readSummary && source.type === "serial") {
+      const serial = source.event;
+      if (serial.type === "status" && serial.phase === "probing") readSummary.setup_probes += 1;
+      if (serial.type === "tx") readSummary.tx_bytes += serial.bytes.length;
+      if (serial.type === "rx-arrived") readSummary.transport_rx_bytes += serial.bytes.length;
+      if (serial.type === "rx") {
+        readSummary.rx_bytes += serial.bytes.length;
+        if (!serial.bytes.length) readSummary.empty_reads += 1;
+      }
+    }
 
     if (source.type === "serial") {
       const serial = source.event;
@@ -49,6 +68,12 @@ export function createSessionTrace({ build, mode, now = () => Date.now() } = {})
       entry = { type: "status", phase: source.phase, message: source.message };
     }
 
+    if (readSummary && source.operation === "read-config" && ["operation-completed", "operation-failed"].includes(source.type)) {
+      const { started_at_ms, ...counts } = readSummary;
+      entry.read_summary = { ...counts, elapsed_ms: Math.max(0, now() - started_at_ms) };
+      readSummary = null;
+    }
+
     if (entry) events.push({ sequence: events.length + 1, at: new Date(now()).toISOString(), ...entry });
   }
 
@@ -62,6 +87,7 @@ export function createSessionTrace({ build, mode, now = () => Date.now() } = {})
         created_at: createdAt,
         app_build: build,
         mode,
+        environment: structuredClone(environment),
         events: structuredClone(events),
       };
     },

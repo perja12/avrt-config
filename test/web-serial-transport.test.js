@@ -78,6 +78,49 @@ class FakePort {
 }
 
 describe("WebSerialTransport", () => {
+  it("captures signals and filters connection events to the selected port", async () => {
+    const events = [];
+    const serial = new EventTarget();
+    const port = new FakePort();
+    port.getSignals = async () => ({ clearToSend: true, dataSetReady: false, dataCarrierDetect: false, ringIndicator: false });
+    const transport = new WebSerialTransport({ port, serial, onEvent: (event) => events.push(event) });
+    await transport.open();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toContainEqual(expect.objectContaining({ phase: "input-signals", detail: expect.objectContaining({ reason: "opened", signals: expect.objectContaining({ clearToSend: true }) }) }));
+    const notify = (selected) => {
+      const event = new Event("disconnect");
+      Object.defineProperty(event, "port", { value: selected });
+      serial.dispatchEvent(event);
+    };
+    notify(new FakePort());
+    notify(port);
+    expect(events.filter((event) => event.phase === "device-disconnect")).toHaveLength(1);
+    await transport.close();
+    notify(port);
+    expect(events.filter((event) => event.phase === "device-disconnect")).toHaveLength(1);
+  });
+
+  it.each(["reject", "hang"])("keeps reads working when signal queries %s", async (mode) => {
+    vi.useFakeTimers();
+    const events = [];
+    const port = new FakePort();
+    port.getSignals = () => mode === "reject" ? Promise.reject(new Error("unsupported")) : new Promise(() => {});
+    const transport = new WebSerialTransport({ port, onEvent: (event) => events.push(event) });
+    try {
+      await transport.open();
+      const session = new TrackerSerialSession({ transport });
+      const read = expect(session.readConfig({ setupAttempts: 1, setupReadTimeoutMs: 10 })).rejects.toThrow("Tracker did not respond");
+      await vi.advanceTimersByTimeAsync(600);
+      await read;
+      expect(port.writes).toHaveLength(1);
+      expect(events.some((event) => event.phase === "input-signals-error")).toBe(true);
+      expect(events).toContainEqual(expect.objectContaining({ phase: "stream-state", detail: expect.objectContaining({ reason: "read-failed", readerActive: true }) }));
+      await transport.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([false, true])("notifies the browser workflow of device loss while reading=%s", async (reading) => {
     const events = [];
     const port = new FakePort();
