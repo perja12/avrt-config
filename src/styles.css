@@ -1135,3 +1135,11 @@
           flex: 1 1 8rem;
         }
       }
+
+      .icon-button svg { width: 22px; height: 22px; }
+      dialog.settings-dialog { border-top-color: var(--line-strong); }
+      .settings-dialog h3 { margin: 1rem 0 0.75rem; }
+      .settings-dialog label { display: block; margin-bottom: 0.4rem; }
+      .settings-dialog select { width: 100%; }
+      .settings-dialog p { margin-top: 0.75rem; }
+      .signal-indicator { color: var(--amber); white-space: normal; max-width: 12rem; }

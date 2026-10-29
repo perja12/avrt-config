@@ -50,13 +50,16 @@ export class WebSerialTransport {
         ...options.port,
       };
       const info = this.port.getInfo?.() ?? {};
-      this.#diagnostic("opening", { portOptions, usbInfo: info });
-      await this.port.open(portOptions);
-      this.#portOpened = true;
+      const signalMode = options.signalMode ?? "automatic";
+      if (!["automatic", "dtr-enabled"].includes(signalMode)) throw new TypeError("Unknown serial signal mode");
       const isDebugprobe =
         info.usbVendorId === DEBUGPROBE_USB_IDS.usbVendorId &&
         info.usbProductId === DEBUGPROBE_USB_IDS.usbProductId;
-      await this.setSignals({ dataTerminalReady: isDebugprobe, requestToSend: false });
+      const signals = { dataTerminalReady: signalMode === "dtr-enabled" || isDebugprobe, requestToSend: false };
+      this.#diagnostic("opening", { portOptions, usbInfo: info, signalMode, signals });
+      await this.port.open(portOptions);
+      this.#portOpened = true;
+      await this.setSignals(signals);
       this.closed = false;
       this.lastReadError = null;
       this.#diagnostic("opened");

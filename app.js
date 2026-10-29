@@ -56,6 +56,11 @@ const elements = {
   changeList: document.querySelector("#change-list"),
   connectionDot: document.querySelector("#connection-dot"),
   connectionText: document.querySelector("#connection-text"),
+  openSettings: document.querySelector("#open-settings"),
+  settingsDialog: document.querySelector("#settings-dialog"),
+  serialSignalMode: document.querySelector("#serial-signal-mode"),
+  serialSignalPending: document.querySelector("#serial-signal-pending"),
+  serialSignalIndicator: document.querySelector("#serial-signal-indicator"),
   installApp: document.querySelector("#install-app"),
   appUpdate: document.querySelector("#app-update"),
   appUpdateReload: document.querySelector("#app-update-reload"),
@@ -132,6 +137,9 @@ let templateNeedsReview = false;
 let templateTargetDto = null;
 let templateOverrides = {};
 let templateCandidateDto = null;
+const SERIAL_SIGNAL_MODE_KEY = "avrt-config.serial-signal-mode";
+let serialSignalMode = loadSerialSignalMode();
+let connectedSignalMode = "automatic";
 let deferredInstallPrompt = null;
 let serviceWorkerRegistration = null;
 let reloadingForServiceWorker = false;
@@ -452,9 +460,21 @@ elements.workspaceButtons.forEach((button) => {
   });
 });
 
+elements.openSettings.addEventListener("click", () => elements.settingsDialog.showModal());
+elements.serialSignalMode.addEventListener("change", () => {
+  serialSignalMode = elements.serialSignalMode.value;
+  try {
+    getLocalStorage()?.setItem(SERIAL_SIGNAL_MODE_KEY, serialSignalMode);
+  } catch {
+    // Keep the selected mode for this page session if storage is unavailable.
+  }
+  renderControls();
+});
+
 elements.connect.addEventListener("click", async () => {
   await runUiAction(async () => {
-    await workflow.connect();
+    connectedSignalMode = serialSignalMode;
+    await workflow.connect({ signalMode: serialSignalMode });
   });
 });
 
@@ -504,6 +524,15 @@ function getLocalStorage() {
     return window.localStorage;
   } catch {
     return null;
+  }
+}
+
+function loadSerialSignalMode() {
+  try {
+    const stored = getLocalStorage()?.getItem(SERIAL_SIGNAL_MODE_KEY);
+    return stored === "dtr-enabled" ? stored : "automatic";
+  } catch {
+    return "automatic";
   }
 }
 
@@ -1165,6 +1194,12 @@ function renderControls() {
   const busy = Boolean(workflow.currentOperation);
   const connected = [TrackerWorkflowState.CONNECTED, TrackerWorkflowState.LOADED, TrackerWorkflowState.ERROR].includes(state);
   const loaded = state === TrackerWorkflowState.LOADED;
+
+  const signalChangePending = state !== TrackerWorkflowState.DISCONNECTED && serialSignalMode !== connectedSignalMode;
+  elements.serialSignalMode.disabled = busy;
+  elements.serialSignalPending.hidden = !signalChangePending;
+  elements.serialSignalIndicator.hidden = !signalChangePending;
+  elements.serialSignalIndicator.textContent = "Signal change pending reconnect";
 
   elements.connect.disabled = busy || state !== TrackerWorkflowState.DISCONNECTED || !browserSupportsSerial;
   elements.read.disabled = busy || !connected || !browserSupportsSerial;

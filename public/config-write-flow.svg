@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" role="img" aria-labelledby="title description">
+  <title id="title">Slik skrives et konfigurasjonsforslag til en AP510-tracker</title>
+  <desc id="description">Appen kontrollerer at fastvaren er støttet, validerer forslaget, skriver det til trackeren, leser konfigurasjonen tilbake og sammenligner alle konfigurasjonspostene. Den vanlige skriveflyten leser ikke trackeren på nytt før skriving.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f5f8fc"/>
+      <stop offset="1" stop-color="#eaf1f8"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#68829b"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#16805d"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="680" rx="28" fill="url(#background)"/>
+  <text x="64" y="66" font-family="DejaVu Sans, sans-serif" font-size="14px" font-weight="700" letter-spacing="1.7px" fill="#3473a6">AP510-KONFIGURATOR</text>
+  <text x="64" y="111" font-family="DejaVu Sans, sans-serif" font-size="32px" font-weight="700" letter-spacing="-.5px" fill="#16324f">Dette skjer når du trykker på Skriv</text>
+  <text x="64" y="143" font-family="DejaVu Sans, sans-serif" font-size="15px" fill="#61758a">Fastvaren kontrolleres først. Etter skriving leses konfigurasjonen tilbake for verifisering.</text>
+
+  <!-- Flow connectors -->
+  <path d="M332 292 H390" fill="none" stroke="#68829b" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M602 292 H660" fill="none" stroke="#68829b" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M872 292 H930" fill="none" stroke="#16805d" stroke-width="3" marker-end="url(#arrow-green)"/>
+
+  <!-- Step 1 -->
+  <g>
+    <rect x="64" y="205" width="268" height="174" rx="18" fill="#fff" stroke="#d8e2ec" stroke-width="1.5"/>
+    <circle cx="96" cy="239" r="18" fill="#e7f1fa"/>
+    <text x="96" y="245" text-anchor="middle" font-size="16" font-weight="750" fill="#286b9d">1</text>
+    <text x="124" y="245" font-family="DejaVu Sans, sans-serif" font-size="19px" font-weight="700" fill="#16324f">Kontroller fastvare</text>
+    <text x="88" y="286" font-family="DejaVu Sans, sans-serif" font-size="15px" fill="#61758a">
+      <tspan x="88" dy="0">Skriving tillates bare for</tspan>
+      <tspan x="88" dy="23">AVRT5 20210404 og</tspan>
+      <tspan x="88" dy="23">AVRT5 20200605.</tspan>
+    </text>
+    <rect x="88" y="345" width="173" height="22" rx="11" fill="#f0f4f8"/>
+    <text x="174" y="360" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13px" font-weight="700" fill="#60778c">Ellers stoppes skrivingen</text>
+  </g>
+
+  <!-- Step 2 -->
+  <g>
+    <rect x="394" y="205" width="208" height="174" rx="18" fill="#fff" stroke="#d8e2ec" stroke-width="1.5"/>
+    <circle cx="426" cy="239" r="18" fill="#e7f1fa"/>
+    <text x="426" y="245" text-anchor="middle" font-size="16" font-weight="750" fill="#286b9d">2</text>
+    <text x="454" y="245" font-family="DejaVu Sans, sans-serif" font-size="19px" font-weight="700" fill="#16324f">Valider forslag</text>
+    <text x="418" y="286" font-family="DejaVu Sans, sans-serif" font-size="15px" fill="#61758a">
+      <tspan x="418" dy="0">Kontroller at innstillingene</tspan>
+      <tspan x="418" dy="23">er gyldige. Bygg forslaget</tspan>
+      <tspan x="418" dy="23">fra innlest konfigurasjon.</tspan>
+    </text>
+    <path d="M451 354h78" stroke="#abc0d2" stroke-width="2" stroke-dasharray="4 5"/>
+  </g>
+
+  <!-- Step 3 -->
+  <g>
+    <rect x="664" y="205" width="208" height="174" rx="18" fill="#fff" stroke="#d8e2ec" stroke-width="1.5"/>
+    <circle cx="696" cy="239" r="18" fill="#e7f1fa"/>
+    <text x="696" y="245" text-anchor="middle" font-size="16" font-weight="750" fill="#286b9d">3</text>
+    <text x="724" y="245" font-family="DejaVu Sans, sans-serif" font-size="16px" font-weight="700" fill="#16324f">Skriv og les tilbake</text>
+    <text x="688" y="286" font-family="DejaVu Sans, sans-serif" font-size="15px" fill="#61758a">
+      <tspan x="688" dy="0">Send forslaget. Når trackeren</tspan>
+      <tspan x="688" dy="23">bekrefter, leses konfigurasjonen</tspan>
+      <tspan x="688" dy="23">tilbake fra trackeren.</tspan>
+    </text>
+    <path d="M721 354h78" stroke="#abc0d2" stroke-width="2" stroke-dasharray="4 5"/>
+  </g>
+
+  <!-- Step 4 -->
+  <g>
+    <rect x="934" y="205" width="202" height="174" rx="18" fill="#f5fcf8" stroke="#b9e1d0" stroke-width="1.5"/>
+    <circle cx="966" cy="239" r="18" fill="#dff4e9"/>
+    <text x="966" y="245" text-anchor="middle" font-size="16" font-weight="750" fill="#16805d">4</text>
+    <text x="994" y="245" font-family="DejaVu Sans, sans-serif" font-size="19px" font-weight="700" fill="#16324f">Sammenlign</text>
+    <text x="958" y="286" font-family="DejaVu Sans, sans-serif" font-size="15px" fill="#61758a">
+      <tspan x="958" dy="0">Sammenlign alle poster med</tspan>
+      <tspan x="958" dy="23">forslaget. Lik konfigurasjon</tspan>
+      <tspan x="958" dy="23">= verifisert.</tspan>
+    </text>
+    <rect x="958" y="345" width="142" height="22" rx="11" fill="#e2f4eb"/>
+    <text x="1029" y="360" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13px" font-weight="700" fill="#16805d">OK eller avvik</text>
+  </g>
+
+  <!-- Tracker / connection lane -->
+  <rect x="64" y="421" width="1072" height="92" rx="16" fill="#e4edf5" stroke="#cfdae5"/>
+  <g transform="translate(91 441)" fill="none" stroke="#35627f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="52" height="52" rx="10" fill="#f8fbfd"/>
+    <path d="M10 13h32M10 21h32M10 29h20M10 37h27"/>
+    <circle cx="39" cy="38" r="3" fill="#16805d" stroke="none"/>
+  </g>
+  <text x="163" y="457" font-family="DejaVu Sans, sans-serif" font-size="19px" font-weight="700" fill="#16324f">Tilkoblet tracker</text>
+  <text x="163" y="482" font-family="DejaVu Sans, sans-serif" font-size="15px" fill="#61758a">Mottar konfigurasjonen og sender den tilbake ved kontrolllesingen.</text>
+  <path d="M498 379 V421" stroke="#9aafc2" stroke-width="2" stroke-dasharray="5 5"/>
+  <path d="M768 379 V421" stroke="#9aafc2" stroke-width="2" stroke-dasharray="5 5"/>
+
+  <!-- Identity note -->
+  <rect x="64" y="545" width="1072" height="82" rx="16" fill="#fff8e9" stroke="#efd8a3" stroke-width="1.5"/>
+  <circle cx="96" cy="586" r="15" fill="#f7e6bb"/>
+  <text x="96" y="592" text-anchor="middle" font-size="18" font-weight="800" fill="#94620b">!</text>
+  <text x="124" y="577" font-family="DejaVu Sans, sans-serif" font-size="19px" font-weight="700" fill="#6f4b0b">Merk</text>
+  <text x="124" y="601" font-family="DejaVu Sans, sans-serif" font-size="15px" fill="#775d2b">Trackeren leses ikke på nytt for identitetskontroll før skriving. Etterpå kontrolleres hele konfigurasjonen mot forslaget.</text>
+</svg>

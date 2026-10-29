@@ -361,6 +361,27 @@ describe("WebSerialTransport", () => {
     expect(port.reader.released).toBe(true);
   });
 
+  it.each([
+    ["automatic", { usbVendorId: 0x1a86, usbProductId: 0x7523 }, false],
+    ["dtr-enabled", { usbVendorId: 0x1a86, usbProductId: 0x7523 }, true],
+    ["dtr-enabled", { usbVendorId: 0x10c4, usbProductId: 0xea60 }, true],
+    ["automatic", DEBUGPROBE_USB_IDS, true],
+    ["dtr-enabled", DEBUGPROBE_USB_IDS, true],
+  ])("applies %s through the workflow and records the selected signals (%j)", async (signalMode, info, dtr) => {
+    const port = new FakePort({ info });
+    const trace = createSessionTrace({ mode: "web-serial" });
+    const workflow = createBrowserTrackerWorkflow({ port, onEvent: (event) => trace.record(event) });
+    await workflow.connect({ signalMode });
+    const signals = { dataTerminalReady: dtr, requestToSend: false };
+    expect(port.signalCalls[0]).toEqual(signals);
+    expect(trace.snapshot().events).toContainEqual(expect.objectContaining({
+      type: "serial-transport", phase: "opening",
+      detail: expect.objectContaining({ signalMode, signals }),
+    }));
+    await workflow.disconnect();
+    expect(port.signalCalls.at(-1)).toEqual({ dataTerminalReady: false, requestToSend: false });
+  });
+
   it("queues read chunks and allows timeout reads without cancelling the stream", async () => {
     const port = new FakePort({
       reads: [{ value: bytes("abc"), done: false }],
